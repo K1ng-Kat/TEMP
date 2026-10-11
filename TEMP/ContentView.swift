@@ -328,7 +328,6 @@ struct ContentView: View {
                 showingSettings = false
                 compactSidebarOpen = false
             }
-        }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: target.icon)
