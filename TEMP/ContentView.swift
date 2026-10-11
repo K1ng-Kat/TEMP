@@ -24,6 +24,11 @@ struct ContentView: View {
 
     @State private var section: TempSection = .all
     @State private var searchText = ""
+    @AppStorage("TEMP.sidebar.visible") private var sidebarVisible = true
+    @State private var compactSidebarOpen = false
+    @State private var pendingFolderURLs: [URL] = []
+    @State private var pendingFolderDuration: TimeInterval?
+    @State private var confirmingFolderImport = false
     @State private var sortMode: SortMode = .expiration
     @State private var showingFilesPicker = false
     @State private var showingFoldersPicker = false
@@ -66,13 +71,66 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 175, ideal: 190, max: 202)
-        } detail: {
-            workspace
+        GeometryReader { geometry in
+            let compact = geometry.size.width < 940
+            let sidebarWidth: CGFloat = compact ? 0 : (sidebarVisible ? 216 : 0)
+            ZStack(alignment: .topLeading) {
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                    LinearGradient(
+                        colors: [Color.accentColor.opacity(0.15), Color.purple.opacity(0.07), .clear, Color.cyan.opacity(0.05)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                }
+                .ignoresSafeArea()
+                HStack(spacing: 0) {
+                    if !compact && sidebarVisible {
+                        sidebar.frame(width: 216)
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                    workspace
+                        .frame(width: max(1, geometry.size.width - sidebarWidth))
+                }
+                .padding(.top, 44)
+
+                if compact && compactSidebarOpen {
+                    Color.black.opacity(0.16)
+                        .ignoresSafeArea()
+                        .onTapGesture { compactSidebarOpen = false }
+                    sidebar
+                        .frame(width: min(244, geometry.size.width - 50))
+                        .padding(.top, 44)
+                        .shadow(color: .black.opacity(0.15), radius: 19, x: 4, y: 0)
+                        .transition(.move(edge: .leading))
+                }
+
+                HStack {
+                    Button {
+                        withAnimation(.smooth(duration: 0.26)) {
+                            if compact { compactSidebarOpen.toggle() }
+                            else { sidebarVisible.toggle() }
+                        }
+                    } label: {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9)
+                            .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.75)
+                    }
+                    .help("Toggle Sidebar")
+                    Spacer()
+                }
+                .padding(.leading, sidebarWidth > 0 ? sidebarWidth + 12 : 83)
+                .padding(.top, 7)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            .onChange(of: section) { _, _ in compactSidebarOpen = false }
         }
-        .tint(TEMPStyle.purple)
+        .tint(.accentColor)
         .fileImporter(
             isPresented: $showingFilesPicker,
             allowedContentTypes: [.item],
@@ -89,6 +147,23 @@ struct ContentView: View {
             customExpirationSheet(for: item)
         }
         .confirmationDialog(
+            "Track original folders?",
+            isPresented: $confirmingFolderImport,
+            titleVisibility: .visible
+        ) {
+            Button("Track original folders") {
+                store.importURLs(pendingFolderURLs, expiresAfter: pendingFolderDuration)
+                pendingFolderURLs = []
+                confirmingFolderImport = false
+            }
+            Button("Cancel", role: .cancel) {
+                pendingFolderURLs = []
+                confirmingFolderImport = false
+            }
+        } message: {
+            Text("TEMP does not copy folders. They stay at their original locations. When their timer expires, the ORIGINAL folders and their contents move to Trash. Choose Keep forever to disable automatic expiration.")
+        }
+        .confirmationDialog(
             "Move \(pendingTrash?.name ?? "this item") to Trash?",
             isPresented: Binding(
                 get: { pendingTrash != nil },
@@ -101,7 +176,9 @@ struct ContentView: View {
                 pendingTrash = nil
             }
         } message: {
-            Text("Only the copy stored by TEMP goes to Trash. Your original remains untouched.")
+            Text(pendingTrash?.isInPlaceFolder == true
+                 ? "This will move the ORIGINAL folder and all of its contents to Trash."
+                 : "Only TEMP's managed copy is moved to Trash.")
         }
         .alert(
             "TEMP couldn't complete that action",
@@ -121,90 +198,58 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 11) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .fill(LinearGradient(
-                            colors: [TEMPStyle.purple, TEMPStyle.violet],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
-                    Image(systemName: "hourglass")
-                        .font(.system(size: 23, weight: .medium))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 44, height: 44)
-
-                VStack(alignment: .leading, spacing: 2) {
+                Image(systemName: "hourglass")
+                    .font(.system(size: 19, weight: .medium))
+                    .frame(width: 39, height: 39)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 3) {
                     Text("TEMP")
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
-                        .tracking(-0.6)
-                    Text("v0.2 · LESS TO KEEP.")
-                        .font(.system(size: 9, weight: .semibold))
-                        .tracking(1.15)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text("Temporary workspace")
+                        .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 52)
-            .padding(.bottom, 25)
+            .padding(.horizontal, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 28)
 
-            Text("WORKSPACE")
+            Text("LIBRARY")
                 .font(.system(size: 10, weight: .semibold))
-                .tracking(1.4)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 23)
-                .padding(.bottom, 10)
-
+                .tracking(1.2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 19)
+                .padding(.bottom, 9)
             VStack(spacing: 4) {
                 sidebarRow(.all, count: store.items.count)
                 sidebarRow(.expiringSoon, count: store.expiringCount)
                 sidebarRow(.pinned, count: store.pinnedCount)
             }
-            .padding(.horizontal, 11)
-
-            Spacer(minLength: 24)
-
-            VStack(alignment: .leading, spacing: 15) {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.green)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Your originals are safe")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("TEMP works on copies only.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Rectangle()
-                    .fill(TEMPStyle.hairline)
-                    .frame(height: 1)
-
+            .padding(.horizontal, 10)
+            Spacer(minLength: 12)
+            VStack(alignment: .leading, spacing: 13) {
+                Divider()
                 Button {
                     store.showLibraryInFinder()
                 } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: "folder")
-                        Text("Reveal storage")
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    Label("Reveal TEMP storage", systemImage: "folder")
                 }
                 .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                Text("Files are copied. Folders stay in place.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(14)
-            .background(TEMPStyle.panel.opacity(0.65), in: RoundedRectangle(cornerRadius: 14))
-            .padding(.horizontal, 11)
+            .padding(.horizontal, 17)
             .padding(.bottom, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .background(.regularMaterial)
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(Color.primary.opacity(0.075)).frame(width: 0.75)
+        }
     }
 
     private func sidebarRow(_ target: TempSection, count: Int) -> some View {
@@ -214,24 +259,21 @@ struct ContentView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: target.icon)
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 22)
-                    .foregroundStyle(active ? TEMPStyle.purple : Color.secondary)
+                    .font(.system(size: 13))
+                    .frame(width: 20)
                 Text(target.title)
                     .font(.system(size: 12, weight: active ? .semibold : .medium))
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 0)
-                Text("\(count)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(active ? TEMPStyle.purple : Color.secondary.opacity(0.65))
+                Spacer()
+                Text(count.formatted())
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            .padding(.horizontal, 12)
-            .frame(height: 39)
-            .background(
-                active ? TEMPStyle.purple.opacity(0.115) : .clear,
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
+            .foregroundStyle(active ? Color.primary : Color.secondary)
+            .padding(.horizontal, 11)
+            .frame(height: 38)
+            .background(active ? Color.accentColor.opacity(0.13) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 10))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -243,7 +285,6 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 topBar
-                introCard
                 overview
                 if store.items.isEmpty && section == .all {
                     welcomeDropZone
@@ -256,17 +297,17 @@ struct ContentView: View {
                 }
                 bottomNote
             }
-            .frame(maxWidth: 1060, alignment: .leading)
-            .padding(.horizontal, 23)
-            .padding(.top, 22)
-            .padding(.bottom, 20)
+            .frame(maxWidth: 1160, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .padding(.bottom, 23)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.clear)
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 18)
-                    .strokeBorder(TEMPStyle.purple, style: StrokeStyle(lineWidth: 3, dash: [10, 7]))
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 7]))
                     .padding(9)
                     .allowsHitTesting(false)
             }
@@ -275,267 +316,131 @@ struct ContentView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 7, height: 7)
-                Text("READY WHEN YOU ARE")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(1.2)
+        HStack(alignment: .center, spacing: 13) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(section.title)
+                    .font(.system(size: 31, weight: .bold, design: .rounded))
+                Text(section.detail)
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
-
-            Spacer(minLength: 10)
-
-            Picker("New items expire after", selection: expirationSelection) {
-                ForEach(ExpirationPreset.allCases) { preset in
-                    Text(preset.title).tag(preset)
+            Spacer(minLength: 5)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("NEW ITEMS EXPIRE")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary)
+                Picker("Default expiration", selection: expirationSelection) {
+                    ForEach(ExpirationPreset.allCases) { preset in
+                        Text(preset.title).tag(preset)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 130)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(width: 142)
-            .help("Default lifetime for newly imported items")
-
             Menu {
-                Button("Import files…", systemImage: "doc.badge.plus") {
-                    showingFilesPicker = true
-                }
-                Button("Import folders…", systemImage: "folder.badge.plus") {
-                    showingFoldersPicker = true
-                }
+                Button("Import files…", systemImage: "doc.badge.plus") { showingFilesPicker = true }
+                Button("Track folders…", systemImage: "folder.badge.plus") { showingFoldersPicker = true }
             } label: {
                 Label("Add items", systemImage: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 4)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
         }
-        .frame(height: 32)
-    }
-
-    private var introCard: some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("YOUR SHORT-STAY WORKSPACE")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.8)
-                    .foregroundStyle(TEMPStyle.purple)
-
-                Text("Everything you need. Nothing you don’t.")
-                    .font(.system(size: 25, weight: .bold, design: .rounded))
-                    .tracking(-0.9)
-                    .minimumScaleFactor(0.75)
-                    .lineLimit(1)
-
-                Text("Keep what matters now. Let the rest clear itself later.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-
-            ZStack {
-                Circle()
-                    .fill(TEMPStyle.purple.opacity(0.07))
-                    .frame(width: 93, height: 93)
-                Circle()
-                    .stroke(TEMPStyle.purple.opacity(0.15), lineWidth: 1)
-                    .frame(width: 76, height: 76)
-                Circle()
-                    .stroke(TEMPStyle.purple.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [3, 6]))
-                    .frame(width: 91, height: 91)
-                Image(systemName: "hourglass")
-                    .font(.system(size: 37, weight: .ultraLight))
-                    .foregroundStyle(TEMPStyle.purple)
-                    .symbolRenderingMode(.hierarchical)
-            }
-            .frame(width: 105, height: 94)
-            .accessibilityHidden(true)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 114, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [TEMPStyle.purple.opacity(0.085), TEMPStyle.violet.opacity(0.025)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(TEMPStyle.purple.opacity(0.13))
-        }
+        .frame(minHeight: 64)
     }
 
     private var overview: some View {
-        HStack(spacing: 12) {
-            metric(title: "IN YOUR SPACE", count: store.items.count, detail: "Managed copies", symbol: "square.stack.3d.up.fill", accent: TEMPStyle.purple)
-            metric(title: "EXPIRING SOON", count: store.expiringCount, detail: "Within 24 hours", symbol: "clock.fill", accent: .orange)
-            metric(title: "PINNED", count: store.pinnedCount, detail: "Here to stay", symbol: "pin.fill", accent: .green)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 12)], spacing: 12) {
+            metric(title: "In TEMP", count: store.items.count, detail: "Tracked items", symbol: "square.stack.3d.up")
+            metric(title: "Expiring soon", count: store.expiringCount, detail: "Within 24 hours", symbol: "clock")
+            metric(title: "Pinned", count: store.pinnedCount, detail: "Kept indefinitely", symbol: "pin")
         }
     }
 
-    private func metric(title: String, count: Int, detail: String, symbol: String, accent: Color) -> some View {
-        HStack(spacing: 11) {
+    private func metric(title: String, count: Int, detail: String, symbol: String) -> some View {
+        HStack(alignment: .top, spacing: 13) {
             Image(systemName: symbol)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(accent)
-                .frame(width: 38, height: 38)
-                .background(accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 11))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(0.5)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(count.formatted())
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                    Text(detail)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
+                .font(.system(size: 18, weight: .medium))
+                .frame(width: 33, height: 33)
+                .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 11))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                Text(count.formatted()).font(.title3.weight(.semibold)).monospacedDigit()
+                Text(detail).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 13)
-        .frame(maxWidth: .infinity, minHeight: 65)
-        .background(TEMPStyle.panel, in: RoundedRectangle(cornerRadius: 14))
+        .padding(15)
+        .frame(maxWidth: .infinity, minHeight: 91, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(TEMPStyle.hairline)
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(Color.primary.opacity(0.075), lineWidth: 0.75)
         }
     }
 
     // MARK: - Empty-state onboarding
 
     private var welcomeDropZone: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 7) {
-                    Image(systemName: "circle.dotted.circle.fill")
-                        .foregroundStyle(TEMPStyle.purple)
-                    Text("DROP ZONE")
-                        .tracking(1.3)
-                        .foregroundStyle(TEMPStyle.purple)
-                }
-                .font(.system(size: 10, weight: .bold))
-
-                Text(isDropTargeted ? "Drop it like it’s gone." : "Make space without the mess.")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .tracking(-0.45)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.75)
-
-                Text("Drop files anywhere, or import below. TEMP stores copies, then moves them to Trash when their time is up.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 8) {
-                    Button {
-                        showingFilesPicker = true
-                    } label: {
-                        Label("Add files", systemImage: "plus")
-                            .fontWeight(.semibold)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .keyboardShortcut("o", modifiers: .command)
-
-                    Button {
-                        showingFoldersPicker = true
-                    } label: {
-                        Label("Add folder", systemImage: "folder")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .keyboardShortcut("o", modifiers: [.command, .shift])
-                }
-                .padding(.top, 2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(spacing: 7) {
-                ZStack {
-                    Circle()
-                        .stroke(TEMPStyle.purple.opacity(0.12), lineWidth: 12)
-                    Circle()
-                        .stroke(TEMPStyle.purple.opacity(0.55), style: StrokeStyle(lineWidth: 3, dash: [3, 7]))
-                        .padding(12)
-                    Circle()
-                        .fill(TEMPStyle.purple.opacity(0.09))
-                        .padding(21)
-                    Image(systemName: isDropTargeted ? "arrow.down.doc.fill" : "hourglass")
-                        .font(.system(size: 40, weight: .ultraLight))
-                        .foregroundStyle(TEMPStyle.purple)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .frame(width: 116, height: 116)
-
-                Text("AUTO-EXPIRES")
-                    .font(.system(size: 9, weight: .bold))
+        HStack(alignment: .center, spacing: 20) {
+            VStack(alignment: .leading, spacing: 13) {
+                Text("YOUR WORKSPACE")
+                    .font(.caption2.weight(.semibold))
                     .tracking(1.1)
                     .foregroundStyle(.secondary)
-                Text(chosenExpiration.title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TEMPStyle.purple)
-                    .lineLimit(1)
+                Text("Keep it temporary.")
+                    .font(.system(size: 25, weight: .bold, design: .rounded))
+                Text("Add files or folders to get started. TEMP handles the expiration.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 9) {
+                    Button {
+                        showingFilesPicker = true
+                    } label: { Label("Add files", systemImage: "plus") }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .keyboardShortcut("o", modifiers: .command)
+                    Button {
+                        showingFoldersPicker = true
+                    } label: { Label("Track folder", systemImage: "folder") }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .keyboardShortcut("o", modifiers: [.command, .shift])
+                }
             }
-            .frame(width: 130)
-            .accessibilityElement(children: .combine)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: isDropTargeted ? "arrow.down.doc" : "folder.badge.clock")
+                .font(.system(size: 65, weight: .ultraLight))
+                .foregroundStyle(Color.secondary.opacity(0.5))
+                .frame(width: 100, height: 110)
+                .accessibilityHidden(true)
         }
-        .padding(.horizontal, 25)
-        .padding(.vertical, 17)
-        .frame(maxWidth: .infinity, minHeight: 218, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [TEMPStyle.purple.opacity(isDropTargeted ? 0.16 : 0.07), TEMPStyle.violet.opacity(0.015)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
+        .padding(24)
+        .frame(maxWidth: .infinity, minHeight: 230, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 24)
                 .strokeBorder(
-                    TEMPStyle.purple.opacity(isDropTargeted ? 0.7 : 0.21),
-                    style: StrokeStyle(lineWidth: 1.3, dash: [6, 5])
+                    Color.primary.opacity(isDropTargeted ? 0.3 : 0.08),
+                    style: StrokeStyle(lineWidth: 1, dash: isDropTargeted ? [7, 5] : [])
                 )
         }
-        .animation(.easeOut(duration: 0.16), value: isDropTargeted)
     }
 
     private var gettingStarted: some View {
-        HStack(spacing: 11) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(TEMPStyle.purple)
-                .frame(width: 32, height: 32)
-                .background(TEMPStyle.purple.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Pick a lifetime. Import. Done.")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("No organizing or cleanup chores. TEMP takes care of its own copies.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle").foregroundStyle(.secondary)
+            Text("Files are copied to TEMP storage. Tracked folders stay in place and go to Trash on expiration.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Spacer(minLength: 0)
-            Image(systemName: "checkmark.shield")
-                .font(.system(size: 17))
-                .foregroundStyle(.green)
         }
-        .padding(12)
-        .background(TEMPStyle.panel.opacity(0.65), in: RoundedRectangle(cornerRadius: 13))
+        .padding(15)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
     // MARK: - Library and lifetime
@@ -549,16 +454,16 @@ struct ContentView: View {
             HStack(spacing: 18) {
                 Image(systemName: "hourglass.bottomhalf.filled")
                     .font(.system(size: 21))
-                    .foregroundStyle(TEMPStyle.purple)
+                    .foregroundStyle(Color.accentColor)
                     .frame(width: 44, height: 44)
-                    .background(TEMPStyle.purple.opacity(0.1), in: RoundedRectangle(cornerRadius: 13))
+                    .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 13))
 
                 VStack(alignment: .leading, spacing: 7) {
                     HStack(spacing: 10) {
                         Text("NEXT TO GO")
                             .font(.system(size: 9, weight: .bold))
                             .tracking(1.2)
-                            .foregroundStyle(TEMPStyle.purple)
+                            .foregroundStyle(Color.accentColor)
                         Text(item.name)
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(1)
@@ -566,10 +471,10 @@ struct ContentView: View {
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(TEMPStyle.purple.opacity(0.11))
+                                .fill(Color.accentColor.opacity(0.11))
                             Capsule()
                                 .fill(LinearGradient(
-                                    colors: [TEMPStyle.purple, TEMPStyle.violet],
+                                    colors: [Color.accentColor, Color.purple],
                                     startPoint: .leading, endPoint: .trailing
                                 ))
                                 .frame(width: max(3, geometry.size.width * progress))
@@ -585,14 +490,14 @@ struct ContentView: View {
                 Text(item.expiresAt ?? .now, style: .relative)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(TEMPStyle.purple)
+                    .foregroundStyle(Color.accentColor)
                     .frame(minWidth: 90, alignment: .trailing)
             }
             .padding(16)
-            .background(TEMPStyle.purple.opacity(0.055), in: RoundedRectangle(cornerRadius: 15))
+            .background(Color.accentColor.opacity(0.055), in: RoundedRectangle(cornerRadius: 15))
             .overlay {
                 RoundedRectangle(cornerRadius: 15)
-                    .strokeBorder(TEMPStyle.purple.opacity(0.12))
+                    .strokeBorder(Color.accentColor.opacity(0.12))
             }
         }
     }
@@ -650,9 +555,9 @@ struct ContentView: View {
         VStack(spacing: 10) {
             Image(systemName: searchText.isEmpty ? section.icon : "magnifyingglass")
                 .font(.system(size: 30, weight: .light))
-                .foregroundStyle(TEMPStyle.purple.opacity(0.7))
+                .foregroundStyle(Color.accentColor.opacity(0.7))
                 .frame(width: 60, height: 60)
-                .background(TEMPStyle.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
             Text(searchText.isEmpty ? "Nothing here yet" : "No matching files")
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
             Text(searchText.isEmpty
@@ -682,10 +587,10 @@ struct ContentView: View {
         HStack(spacing: 13) {
             Image(systemName: item.isFolder ? "folder.fill" : "doc.fill")
                 .font(.system(size: 18))
-                .foregroundStyle(item.isFolder ? .blue : TEMPStyle.purple)
+                .foregroundStyle(item.isFolder ? .blue : Color.accentColor)
                 .frame(width: 43, height: 43)
                 .background(
-                    item.isFolder ? Color.blue.opacity(0.09) : TEMPStyle.purple.opacity(0.085),
+                    item.isFolder ? Color.blue.opacity(0.09) : Color.accentColor.opacity(0.085),
                     in: RoundedRectangle(cornerRadius: 11)
                 )
             VStack(alignment: .leading, spacing: 4) {
@@ -709,7 +614,7 @@ struct ContentView: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(expiration, style: .relative)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(item.isExpiringSoon ? .orange : TEMPStyle.purple)
+                        .foregroundStyle(item.isExpiringSoon ? .orange : Color.accentColor)
                     Text(expiration.formatted(date: .abbreviated, time: .shortened))
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
@@ -760,7 +665,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
-        .background(TEMPStyle.panel.opacity(0.75), in: RoundedRectangle(cornerRadius: 13))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
                 .strokeBorder(TEMPStyle.hairline)
@@ -780,7 +685,7 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 9) {
             Image(systemName: "checkmark.shield")
                 .foregroundStyle(.green)
-            Text("Only managed copies expire. Originals stay untouched.")
+            Text("Files expire from TEMP storage. Tracked folders expire at their original location.")
             Spacer(minLength: 10)
             Button("Clean up now") { store.cleanupExpired() }
                 .buttonStyle(.link)
@@ -794,10 +699,10 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 17) {
             Image(systemName: "calendar.badge.clock")
                 .font(.system(size: 25))
-                .foregroundStyle(TEMPStyle.purple)
+                .foregroundStyle(Color.accentColor)
             Text("Choose a lifetime")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
-            Text("Pick when TEMP should move its copy of \(item.name) to Trash.")
+            Text(item.isInPlaceFolder ? "TEMP will move the original folder to Trash." : "TEMP will move its managed copy to Trash.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -822,10 +727,23 @@ struct ContentView: View {
 
     // MARK: - Import handling
 
+    private func importRequestedURLs(_ urls: [URL], expiresAfter duration: TimeInterval?) {
+        let folders = urls.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+        }
+        let files = urls.filter { !folders.contains($0) }
+        if !files.isEmpty { store.importURLs(files, expiresAfter: duration) }
+        if !folders.isEmpty {
+            pendingFolderURLs.append(contentsOf: folders)
+            pendingFolderDuration = duration
+            confirmingFolderImport = true
+        }
+    }
+
     private func handleImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-            store.importURLs(urls, expiresAfter: chosenExpiration.duration)
+            importRequestedURLs(urls, expiresAfter: chosenExpiration.duration)
         case .failure(let error):
             store.errorMessage = error.localizedDescription
         }
@@ -855,7 +773,7 @@ struct ContentView: View {
                 }
                 guard let url, url.isFileURL else { return }
                 Task { @MainActor in
-                    store.importURLs([url], expiresAfter: duration)
+                    importRequestedURLs([url], expiresAfter: duration)
                 }
             }
         }
