@@ -185,6 +185,13 @@ final class TemporaryStore: ObservableObject {
         NSWorkspace.shared.open(managedURL)
     }
 
+    /// Remove an in-place folder without moving it to Trash.
+    func stopTracking(_ item: TempItem) {
+        guard item.isInPlaceFolder else { return }
+        items.removeAll { $0.id == item.id }
+        save()
+    }
+
     func moveToTrash(_ item: TempItem) {
         do {
             try trashItem(item)
