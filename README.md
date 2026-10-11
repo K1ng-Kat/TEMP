@@ -35,3 +35,7 @@ You can restore items from the macOS Trash until Trash is emptied. TEMP's index 
 ## Next steps
 
 Polish the visual brand and app icon, add sorting/search, and improve drag/drop error feedback. Test importing files, folders, and expiry behavior on a Mac before distributing.
+
+## CI configuration
+
+The Xcode Cloud **Default** workflow builds TEMP for **macOS only** when changes are pushed to the repository. iOS and visionOS build actions are not part of the TEMP workflow.
