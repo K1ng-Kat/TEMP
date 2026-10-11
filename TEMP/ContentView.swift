@@ -900,3 +900,285 @@ struct ContentView: View {
         return true
     }
 }
+
+
+// MARK: - Welcome guide
+// Deliberately lives next to the root view so this is included in the existing
+// Xcode target without creating a second project-file dependency.
+
+private enum TEMPWelcomeStep: Int, CaseIterable {
+    case introduction
+    case files
+    case folders
+    case control
+
+    var icon: String {
+        switch self {
+        case .introduction: "hourglass"
+        case .files: "doc.on.doc"
+        case .folders: "folder"
+        case .control: "slider.horizontal.3"
+        }
+    }
+
+    var eyebrow: String {
+        switch self {
+        case .introduction: "MEET TEMP"
+        case .files: "TEMPORARY FILES"
+        case .folders: "FOLDERS STAY PUT"
+        case .control: "YOU'RE IN CONTROL"
+        }
+    }
+
+    var headline: String {
+        switch self {
+        case .introduction: "Your files. On your terms."
+        case .files: "Keep the original."
+        case .folders: "No duplicate folders."
+        case .control: "Set it. Change it. Keep it."
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .introduction:
+            "TEMP is a simple place for the files and folders you only need for a little while. Give an item a lifetime, and TEMP handles cleanup."
+        case .files:
+            "Import a file and TEMP makes a managed copy. Use that copy for temporary work. When it expires, only TEMP's copy goes to Trash."
+        case .folders:
+            "Choose a folder and TEMP tracks it exactly where it lives. Nothing is duplicated. When it expires, the original folder and everything inside it go to Trash."
+        case .control:
+            "Change an expiration any time, pin an item to keep it, or stop tracking a folder without deleting it. Cleanup runs while TEMP is open and resumes at the next launch."
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .introduction:
+            "Less clutter, without another folder to organize."
+        case .files:
+            "Your original file stays untouched."
+        case .folders:
+            "TEMP asks before tracking any original folder."
+        case .control:
+            "Expired items go to macOS Trash, not permanent deletion."
+        }
+    }
+}
+
+private struct TEMPWelcomeExperience: View {
+    let onFinish: () -> Void
+    let onImportFiles: () -> Void
+    let onTrackFolder: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var stepIndex = 0
+    @State private var forward = true
+    @State private var revealed = false
+
+    private var step: TEMPWelcomeStep {
+        TEMPWelcomeStep(rawValue: stepIndex) ?? .introduction
+    }
+
+    private var pageTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "hourglass")
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(width: 38, height: 38)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("TEMP")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                    Text("A quick introduction")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("Skip") { onFinish() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(10)
+                    .contentShape(Rectangle())
+                    .accessibilityHint("Closes the welcome guide")
+            }
+            .padding(.bottom, 23)
+
+            ZStack {
+                pageContent(step)
+                    .id(stepIndex)
+                    .transition(pageTransition)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Step \(stepIndex + 1) of \(TEMPWelcomeStep.allCases.count)")
+
+            HStack(spacing: 7) {
+                ForEach(0..<TEMPWelcomeStep.allCases.count, id: \.self) { index in
+                    Button {
+                        go(to: index)
+                    } label: {
+                        Capsule()
+                            .fill(index == stepIndex ? Color.accentColor : Color.primary.opacity(0.13))
+                            .frame(width: index == stepIndex ? 24 : 8, height: 7)
+                            .contentShape(Rectangle())
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Show guide page \(index + 1)")
+                    .accessibilityAddTraits(index == stepIndex ? .isSelected : [])
+                }
+
+                Spacer()
+
+                Text("\(stepIndex + 1) / \(TEMPWelcomeStep.allCases.count)")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 4)
+
+            Divider()
+                .padding(.bottom, 18)
+
+            HStack(spacing: 9) {
+                if stepIndex > 0 {
+                    Button("Back") { go(to: stepIndex - 1) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                }
+
+                Spacer()
+
+                if stepIndex < TEMPWelcomeStep.allCases.count - 1 {
+                    Button {
+                        go(to: stepIndex + 1)
+                    } label: {
+                        Label("Continue", systemImage: "arrow.right")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Import a file") { onImportFiles() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                    Button("Track a folder") { onTrackFolder() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                    Button("Get started") { onFinish() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+        .padding(29)
+        .frame(width: 730, height: 480)
+        .background {
+            ZStack {
+                Color(nsColor: .windowBackgroundColor)
+                LinearGradient(
+                    colors: [
+                        Color.accentColor.opacity(0.12),
+                        Color.purple.opacity(0.065),
+                        Color.clear,
+                        Color.cyan.opacity(0.035)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onAppear {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.55)) {
+                revealed = true
+            }
+        }
+    }
+
+    private func pageContent(_ current: TEMPWelcomeStep) -> some View {
+        HStack(alignment: .center, spacing: 26) {
+            illustration(for: current)
+                .frame(width: 234, height: 238)
+                .scaleEffect(revealed ? 1 : 0.92)
+                .opacity(revealed ? 1 : 0.25)
+
+            VStack(alignment: .leading, spacing: 14) {
+                Text(current.eyebrow)
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1.5)
+                    .foregroundStyle(Color.accentColor)
+
+                Text(current.headline)
+                    .font(.system(size: 29, weight: .bold, design: .rounded))
+                    .tracking(-0.4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(current.explanation)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(4)
+
+                Label(current.detail, systemImage: current == .folders ? "exclamationmark.shield" : "checkmark.shield")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(current == .folders ? Color.orange : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func illustration(for current: TEMPWelcomeStep) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.085))
+                .frame(width: 216, height: 216)
+
+            Circle()
+                .strokeBorder(Color.accentColor.opacity(0.15), lineWidth: 1)
+                .frame(width: 178, height: 178)
+
+            RoundedRectangle(cornerRadius: 29, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .frame(width: 142, height: 142)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 29, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.09), lineWidth: 1)
+                }
+                .rotationEffect(.degrees(current == .control ? 7 : -6))
+
+            Image(systemName: current.icon)
+                .font(.system(size: 66, weight: .ultraLight))
+                .foregroundStyle(Color.accentColor)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolRenderingMode(.hierarchical)
+                .shadow(color: Color.accentColor.opacity(0.13), radius: 12)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func go(to index: Int) {
+        guard index != stepIndex,
+              (0..<TEMPWelcomeStep.allCases.count).contains(index) else { return }
+        forward = index > stepIndex
+        withAnimation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.43, dampingFraction: 0.87)) {
+            stepIndex = index
+        }
+    }
+}
