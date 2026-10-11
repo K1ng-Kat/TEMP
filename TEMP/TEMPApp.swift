@@ -9,9 +9,9 @@ struct TEMPApp: App {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(store)
-                .frame(minWidth: 850, minHeight: 590)
+                .frame(minWidth: 870, minHeight: 640)
         }
-        .defaultSize(width: 1040, height: 690)
+        .defaultSize(width: 1110, height: 755)
 
         MenuBarExtra("TEMP", systemImage: "hourglass") {
             TEMPMenuBarContent()
@@ -28,19 +28,13 @@ private struct TEMPMenuBarContent: View {
         Text("TEMP is running")
         Text("\(store.items.count) items · \(store.expiringCount) expiring soon")
             .foregroundStyle(.secondary)
-
         Divider()
-
         Button("Open TEMP") {
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
         }
-        Button("Clean Up Now") {
-            store.cleanupExpired()
-        }
+        Button("Clean Up Now") { store.cleanupExpired() }
         Divider()
-        Button("Quit TEMP") {
-            NSApp.terminate(nil)
-        }
+        Button("Quit TEMP") { NSApp.terminate(nil) }
     }
 }
