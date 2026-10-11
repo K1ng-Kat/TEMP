@@ -2,8 +2,8 @@ import AppKit
 import Combine
 import Foundation
 
-/// Owns copies of imported files. Never removes files at their original locations.
-/// Expired copies are moved to the macOS Trash, not permanently deleted.
+/// Copies files into TEMP. New folders are tracked in place after clear consent.
+/// Expiration moves managed copies or explicitly tracked original folders to Trash.
 @MainActor
 final class TemporaryStore: ObservableObject {
     @Published private(set) var items: [TempItem] = []
@@ -85,26 +85,46 @@ final class TemporaryStore: ObservableObject {
 
             let id = UUID()
             let name = source.lastPathComponent
-            let folder = managedURL.appendingPathComponent(id.uuidString, isDirectory: true)
-            let destination = folder.appendingPathComponent(name)
-            let isFolder = (try? source.resourceValues(
-                forKeys: [.isDirectoryKey]
-            ).isDirectory) ?? false
+            let isFolder = (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
 
+            if isFolder {
+                do {
+                    // A security-scoped bookmark is required to access the same
+                    // user-approved original folder after relaunching TEMP.
+                    let bookmark = try source.bookmarkData(
+                        options: [.withSecurityScope],
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                    items.append(TempItem(
+                        id: id, name: name, isFolder: true,
+                        importedAt: Date(),
+                        expiresAt: duration.map { Date().addingTimeInterval($0) },
+                        isPinned: duration == nil,
+                        folderBookmark: bookmark,
+                        sourcePath: source.path
+                    ))
+                    imported = true
+                } catch {
+                    failures.append("\(name): Can't retain access to this folder (\(error.localizedDescription)). Nothing was moved.")
+                }
+                continue
+            }
+
+            let container = managedURL.appendingPathComponent(id.uuidString, isDirectory: true)
+            let destination = container.appendingPathComponent(name)
             do {
-                try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+                try fileManager.createDirectory(at: container, withIntermediateDirectories: true)
                 try fileManager.copyItem(at: source, to: destination)
                 items.append(TempItem(
-                    id: id,
-                    name: name,
-                    isFolder: isFolder,
+                    id: id, name: name, isFolder: false,
                     importedAt: Date(),
                     expiresAt: duration.map { Date().addingTimeInterval($0) },
                     isPinned: duration == nil
                 ))
                 imported = true
             } catch {
-                try? fileManager.removeItem(at: folder)
+                try? fileManager.removeItem(at: container)
                 failures.append("\(name): \(error.localizedDescription)")
             }
         }
@@ -136,21 +156,29 @@ final class TemporaryStore: ObservableObject {
     }
 
     func open(_ item: TempItem) {
-        let url = itemURL(for: item)
-        guard fileManager.fileExists(atPath: url.path) else {
-            errorMessage = "This item could not be found in TEMP's storage."
-            return
+        do {
+            try withItemURL(item) { url in
+                guard fileManager.fileExists(atPath: url.path) else {
+                    throw TEMPStorageError.missingFolder
+                }
+                NSWorkspace.shared.open(url)
+            }
+        } catch {
+            errorMessage = "Couldn't open \(item.name): \(error.localizedDescription)"
         }
-        NSWorkspace.shared.open(url)
     }
 
     func showInFinder(_ item: TempItem) {
-        let url = itemURL(for: item)
-        guard fileManager.fileExists(atPath: url.path) else {
-            errorMessage = "This item could not be found in TEMP's storage."
-            return
+        do {
+            try withItemURL(item) { url in
+                guard fileManager.fileExists(atPath: url.path) else {
+                    throw TEMPStorageError.missingFolder
+                }
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        } catch {
+            errorMessage = "Couldn't reveal \(item.name): \(error.localizedDescription)"
         }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func showLibraryInFinder() {
@@ -159,7 +187,7 @@ final class TemporaryStore: ObservableObject {
 
     func moveToTrash(_ item: TempItem) {
         do {
-            try trashManagedCopy(item)
+            try trashItem(item)
             items.removeAll { $0.id == item.id }
             save()
         } catch {
@@ -177,7 +205,7 @@ final class TemporaryStore: ObservableObject {
         var removed = Set<UUID>()
         for item in expired {
             do {
-                try trashManagedCopy(item)
+                try trashItem(item)
                 removed.insert(item.id)
             } catch {
                 errorMessage = "Couldn't clean up \(item.name): \(error.localizedDescription)"
@@ -197,14 +225,61 @@ final class TemporaryStore: ObservableObject {
             .appendingPathComponent((item.name as NSString).lastPathComponent)
     }
 
-    private func trashManagedCopy(_ item: TempItem) throws {
-        let location = itemURL(for: item)
-        let container = location.deletingLastPathComponent()
-        if fileManager.fileExists(atPath: location.path) {
-            try fileManager.trashItem(at: location, resultingItemURL: nil)
+    private enum TEMPStorageError: LocalizedError {
+        case lostPermission
+        case missingFolder
+        case missingBookmark
+
+        var errorDescription: String? {
+            switch self {
+            case .lostPermission:
+                return "TEMP no longer has permission to access that original folder. Re-import it to grant permission."
+            case .missingFolder:
+                return "The item is no longer at its saved location."
+            case .missingBookmark:
+                return "The folder's saved permission is missing."
+            }
         }
-        if fileManager.fileExists(atPath: container.path) {
-            try fileManager.removeItem(at: container)
+    }
+
+    private func withItemURL<T>(_ item: TempItem, _ action: (URL) throws -> T) throws -> T {
+        guard item.isInPlaceFolder else {
+            return try action(itemURL(for: item))
+        }
+        guard let bookmark = item.folderBookmark else { throw TEMPStorageError.missingBookmark }
+        var stale = false
+        let url = try URL(
+            resolvingBookmarkData: bookmark,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &stale
+        )
+        guard url.startAccessingSecurityScopedResource() else {
+            throw TEMPStorageError.lostPermission
+        }
+        defer { url.stopAccessingSecurityScopedResource() }
+        guard !stale else { throw TEMPStorageError.lostPermission }
+        return try action(url)
+    }
+
+    private func trashItem(_ item: TempItem) throws {
+        if item.isInPlaceFolder {
+            try withItemURL(item) { url in
+                guard fileManager.fileExists(atPath: url.path) else {
+                    throw TEMPStorageError.missingFolder
+                }
+                // This is the actual user-selected original folder, not a copy.
+                try fileManager.trashItem(at: url, resultingItemURL: nil)
+            }
+        } else {
+            let location = itemURL(for: item)
+            let container = location.deletingLastPathComponent()
+            if fileManager.fileExists(atPath: location.path) {
+                try fileManager.trashItem(at: location, resultingItemURL: nil)
+            }
+            if fileManager.fileExists(atPath: container.path) {
+                try fileManager.removeItem(at: container)
+            }
         }
     }
 
