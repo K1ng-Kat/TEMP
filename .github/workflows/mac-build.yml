@@ -9,6 +9,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate local Mac repair script
+        shell: bash
+        run: bash -n scripts/Repair-TEMP-Local.command
       - name: Build and verify native macOS executable
         shell: bash
         run: |
