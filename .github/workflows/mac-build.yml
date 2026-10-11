@@ -1,0 +1,14 @@
+name: Build TEMP for macOS
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS app without signing
+        run: |
+          xcodebuild -project TEMP.xcodeproj -scheme TEMP -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
