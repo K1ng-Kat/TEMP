@@ -23,6 +23,7 @@ struct ContentView: View {
     @AppStorage("TEMP.defaultExpiration") private var defaultExpirationRaw = ExpirationPreset.oneDay.rawValue
 
     @State private var section: TempSection = .all
+    @State private var showingSettings = false
     @State private var searchText = ""
     @AppStorage("TEMP.sidebar.visible") private var sidebarVisible = true
     @State private var compactSidebarOpen = false
@@ -244,6 +245,33 @@ struct ContentView: View {
                 sidebarRow(.all, count: store.items.count)
                 sidebarRow(.expiringSoon, count: store.expiringCount)
                 sidebarRow(.pinned, count: store.pinnedCount)
+
+                Divider()
+                    .padding(.vertical, 10)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showingSettings = true
+                        compactSidebarOpen = false
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 13))
+                            .frame(width: 20)
+                        Text("Settings")
+                            .font(.system(size: 12, weight: showingSettings ? .semibold : .medium))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(showingSettings ? Color.primary : Color.secondary)
+                    .padding(.horizontal, 11)
+                    .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                    .background(showingSettings ? Color.accentColor.opacity(0.13) : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 10))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
             }
             .padding(.horizontal, 10)
             Spacer(minLength: 12)
@@ -268,6 +296,11 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                Text("Version \(appVersion) · Build \(appBuild)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
                 Text("Files are copied. Folders stay in place.")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
@@ -288,9 +321,14 @@ struct ContentView: View {
     }
 
     private func sidebarRow(_ target: TempSection, count: Int) -> some View {
-        let active = section == target
+        let active = section == target && !showingSettings
         return Button {
-            withAnimation(.easeInOut(duration: 0.16)) { section = target }
+            withAnimation(.easeInOut(duration: 0.16)) {
+                section = target
+                showingSettings = false
+                compactSidebarOpen = false
+            }
+        }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: target.icon)
@@ -320,17 +358,22 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 topBar(compact: compact)
-                overview
-                if store.items.isEmpty && section == .all {
-                    welcomeDropZone
-                    gettingStarted
+
+                if showingSettings {
+                    settingsPage
                 } else {
-                    if section == .all, let next = nextExpiration {
-                        upcomingCard(next)
+                    overview
+                    if store.items.isEmpty && section == .all {
+                        welcomeDropZone
+                        gettingStarted
+                    } else {
+                        if section == .all, let next = nextExpiration {
+                            upcomingCard(next)
+                        }
+                        library
                     }
-                    library
+                    bottomNote
                 }
-                bottomNote
             }
             .frame(maxWidth: 1160, alignment: .leading)
             .padding(.horizontal, compact ? 18 : 24)
@@ -390,11 +433,11 @@ struct ContentView: View {
                 sidebarToggle()
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(section.title)
+                    Text(showingSettings ? "Settings" : section.title)
                         .font(.system(size: compact ? 25 : 31, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
-                    Text(section.detail)
+                    Text(showingSettings ? "Preferences, storage, and app information" : section.detail)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -402,14 +445,16 @@ struct ContentView: View {
 
                 Spacer(minLength: 4)
 
-                if !compact {
+                if !compact && !showingSettings {
                     expirationPicker
                 }
 
-                importMenu
+                if !showingSettings {
+                    importMenu
+                }
             }
 
-            if compact {
+            if compact && !showingSettings {
                 HStack(spacing: 8) {
                     expirationPicker
                     Spacer()
@@ -461,6 +506,181 @@ struct ContentView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+    }
+
+    private var appVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "Unknown"
+    }
+
+    private var appBuild: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "Unknown"
+    }
+
+    private var settingsPage: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            settingsCard(title: "General", subtitle: "Choose how TEMP handles new items", icon: "slider.horizontal.3") {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Default expiration")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Used for files and folders when you add them.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 10)
+                    Picker("Default expiration", selection: expirationSelection) {
+                        ForEach(ExpirationPreset.allCases) { preset in
+                            Text(preset.title).tag(preset)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 150)
+                }
+            }
+
+            settingsCard(title: "Storage & cleanup", subtitle: "TEMP keeps you in control", icon: "externaldrive") {
+                VStack(spacing: 12) {
+                    settingsAction(
+                        title: "Reveal TEMP storage",
+                        detail: "Open the folder containing TEMP-managed file copies.",
+                        icon: "folder"
+                    ) {
+                        store.showLibraryInFinder()
+                    }
+
+                    Divider()
+
+                    settingsAction(
+                        title: "Run cleanup now",
+                        detail: "Move expired items to Trash. Tracked original folders are included.",
+                        icon: "trash"
+                    ) {
+                        store.cleanupExpired()
+                    }
+
+                    Text("Individual files are copied. Folders are tracked in place and their originals go to Trash when they expire.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            settingsCard(title: "Help", subtitle: "A quick refresher", icon: "questionmark.circle") {
+                settingsAction(
+                    title: "Show welcome guide",
+                    detail: "Replay the four-page introduction to TEMP.",
+                    icon: "book.closed"
+                ) {
+                    showingWelcome = true
+                }
+            }
+
+            settingsCard(title: "About TEMP", subtitle: "See which version is installed on this Mac", icon: "info.circle") {
+                HStack(spacing: 14) {
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 55, height: 55)
+                        .background(Color.accentColor.opacity(0.09),
+                                    in: RoundedRectangle(cornerRadius: 15))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("TEMP for macOS")
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        Text("Version \(appVersion) (Build \(appBuild))")
+                            .font(.system(size: 12, weight: .medium))
+                            .monospacedDigit()
+                        Text("These numbers come from the installed app, not GitHub.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                Divider()
+
+                settingsAction(
+                    title: "See latest builds on GitHub",
+                    detail: "Compare this installed build with the latest macOS build.",
+                    icon: "arrow.up.right.square"
+                ) {
+                    guard let url = URL(string: "https://github.com/K1ng-Kat/TEMP/actions/workflows/mac-build.yml") else { return }
+                    NSWorkspace.shared.open(url)
+                }
+
+                Text("A successful GitHub build does not automatically update the app installed on this Mac.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func settingsCard<Content: View>(
+        title: String,
+        subtitle: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 11) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .medium))
+                    .frame(width: 36, height: 36)
+                    .background(Color.primary.opacity(0.055),
+                                in: RoundedRectangle(cornerRadius: 11))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            content()
+        }
+        .padding(19)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(Color.primary.opacity(0.075), lineWidth: 0.75)
+        }
+    }
+
+    private func settingsAction(
+        title: String,
+        detail: String,
+        icon: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 27)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text(detail)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var overview: some View {
