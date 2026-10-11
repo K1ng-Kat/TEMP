@@ -26,6 +26,9 @@ struct ContentView: View {
     @State private var searchText = ""
     @AppStorage("TEMP.sidebar.visible") private var sidebarVisible = true
     @State private var compactSidebarOpen = false
+    @State private var compactLayout = false
+    @AppStorage("TEMP.welcome.completed") private var hasCompletedWelcome = false
+    @State private var showingWelcome = false
     @State private var pendingFolderURLs: [URL] = []
     @State private var pendingFolderDuration: TimeInterval?
     @State private var confirmingFolderImport = false
@@ -74,63 +77,80 @@ struct ContentView: View {
         GeometryReader { geometry in
             let compact = geometry.size.width < 940
             let sidebarWidth: CGFloat = compact ? 0 : (sidebarVisible ? 216 : 0)
+
             ZStack(alignment: .topLeading) {
                 ZStack {
                     Color(nsColor: .windowBackgroundColor)
                     LinearGradient(
-                        colors: [Color.accentColor.opacity(0.15), Color.purple.opacity(0.07), .clear, Color.cyan.opacity(0.05)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
+                        colors: [
+                            Color.accentColor.opacity(0.15),
+                            Color.purple.opacity(0.07),
+                            .clear,
+                            Color.cyan.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
                 }
                 .ignoresSafeArea()
+
                 HStack(spacing: 0) {
                     if !compact && sidebarVisible {
-                        sidebar.frame(width: 216)
+                        sidebar
+                            .frame(width: 216)
                             .transition(.move(edge: .leading).combined(with: .opacity))
                     }
-                    workspace
+
+                    workspace(compact: compact)
                         .frame(width: max(1, geometry.size.width - sidebarWidth))
                 }
-                .padding(.top, 44)
+                .frame(maxHeight: .infinity, alignment: .top)
 
                 if compact && compactSidebarOpen {
                     Color.black.opacity(0.16)
                         .ignoresSafeArea()
-                        .onTapGesture { compactSidebarOpen = false }
+                        .onTapGesture {
+                            withAnimation(.smooth(duration: 0.25)) {
+                                compactSidebarOpen = false
+                            }
+                        }
+
                     sidebar
                         .frame(width: min(244, geometry.size.width - 50))
-                        .padding(.top, 44)
                         .shadow(color: .black.opacity(0.15), radius: 19, x: 4, y: 0)
-                        .transition(.move(edge: .leading))
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
-
-                HStack {
-                    Button {
-                        withAnimation(.smooth(duration: 0.26)) {
-                            if compact { compactSidebarOpen.toggle() }
-                            else { sidebarVisible.toggle() }
-                        }
-                    } label: {
-                        Image(systemName: "sidebar.left")
-                            .font(.system(size: 13, weight: .medium))
-                            .frame(width: 30, height: 30)
-                    }
-                    .buttonStyle(.plain)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 9)
-                            .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.75)
-                    }
-                    .help("Toggle Sidebar")
-                    Spacer()
-                }
-                .padding(.leading, sidebarWidth > 0 ? sidebarWidth + 12 : 83)
-                .padding(.top, 7)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            .onAppear {
+                compactLayout = compact
+                if !hasCompletedWelcome { showingWelcome = true }
+            }
+            .onChange(of: compact) { _, value in
+                compactLayout = value
+                compactSidebarOpen = false
+            }
             .onChange(of: section) { _, _ in compactSidebarOpen = false }
         }
         .tint(.accentColor)
+        .sheet(isPresented: $showingWelcome) {
+            TEMPWelcomeExperience(
+                onFinish: {
+                    hasCompletedWelcome = true
+                    showingWelcome = false
+                },
+                onImportFiles: {
+                    hasCompletedWelcome = true
+                    showingWelcome = false
+                    showingFilesPicker = true
+                },
+                onTrackFolder: {
+                    hasCompletedWelcome = true
+                    showingWelcome = false
+                    showingFoldersPicker = true
+                }
+            )
+        }
         .fileImporter(
             isPresented: $showingFilesPicker,
             allowedContentTypes: [.item],
@@ -211,8 +231,8 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 20)
-            .padding(.bottom, 28)
+            .padding(.top, 16)
+            .padding(.bottom, 22)
 
             Text("LIBRARY")
                 .font(.system(size: 10, weight: .semibold))
@@ -230,9 +250,20 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 13) {
                 Divider()
                 Button {
+                    showingWelcome = true
+                } label: {
+                    Label("How TEMP works", systemImage: "questionmark.circle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityHint("Opens the TEMP welcome guide")
+
+                Button {
                     store.showLibraryInFinder()
                 } label: {
                     Label("Reveal TEMP storage", systemImage: "folder")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
@@ -246,7 +277,11 @@ struct ContentView: View {
             .padding(.bottom, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.regularMaterial)
+        .background {
+            Rectangle()
+                .fill(.regularMaterial)
+                .ignoresSafeArea(edges: .top)
+        }
         .overlay(alignment: .trailing) {
             Rectangle().fill(Color.primary.opacity(0.075)).frame(width: 0.75)
         }
@@ -281,10 +316,10 @@ struct ContentView: View {
 
     // MARK: - Main workspace
 
-    private var workspace: some View {
+    private func workspace(compact: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                topBar
+                topBar(compact: compact)
                 overview
                 if store.items.isEmpty && section == .all {
                     welcomeDropZone
@@ -298,8 +333,8 @@ struct ContentView: View {
                 bottomNote
             }
             .frame(maxWidth: 1160, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.top, 18)
+            .padding(.horizontal, compact ? 18 : 24)
+            .padding(.top, 14)
             .padding(.bottom, 23)
             .frame(maxWidth: .infinity, alignment: .top)
         }
@@ -315,41 +350,117 @@ struct ContentView: View {
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: acceptDrop)
     }
 
-    private var topBar: some View {
-        HStack(alignment: .center, spacing: 13) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(section.title)
-                    .font(.system(size: 31, weight: .bold, design: .rounded))
-                Text(section.detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 5)
-            VStack(alignment: .trailing, spacing: 3) {
-                Text("NEW ITEMS EXPIRE")
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary)
-                Picker("Default expiration", selection: expirationSelection) {
-                    ForEach(ExpirationPreset.allCases) { preset in
-                        Text(preset.title).tag(preset)
-                    }
+    private func sidebarToggle() -> some View {
+        let expanded = compactLayout ? compactSidebarOpen : sidebarVisible
+
+        return Button {
+            withAnimation(.smooth(duration: 0.26)) {
+                if compactLayout {
+                    compactSidebarOpen.toggle()
+                } else {
+                    sidebarVisible.toggle()
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 130)
             }
-            Menu {
-                Button("Import files…", systemImage: "doc.badge.plus") { showingFilesPicker = true }
-                Button("Track folders…", systemImage: "folder.badge.plus") { showingFoldersPicker = true }
-            } label: {
-                Label("Add items", systemImage: "plus")
-                    .font(.system(size: 12, weight: .semibold))
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(expanded ? "Hide sidebar" : "Show sidebar")
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
+            .frame(minWidth: 114, minHeight: 35)
+            .padding(.horizontal, 9)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 11))
+            .overlay {
+                RoundedRectangle(cornerRadius: 11)
+                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.75)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 11))
         }
-        .frame(minHeight: 64)
+        .buttonStyle(.plain)
+        .help(expanded ? "Close the sidebar" : "Open the sidebar")
+        .accessibilityLabel(expanded ? "Hide sidebar" : "Show sidebar")
+    }
+
+    private func topBar(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .center, spacing: 12) {
+                sidebarToggle()
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(section.title)
+                        .font(.system(size: compact ? 25 : 31, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                    Text(section.detail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                if !compact {
+                    expirationPicker
+                }
+
+                importMenu
+            }
+
+            if compact {
+                HStack(spacing: 8) {
+                    expirationPicker
+                    Spacer()
+                    Button {
+                        showingWelcome = true
+                    } label: {
+                        Label("How it works", systemImage: "questionmark.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var expirationPicker: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text("NEW ITEMS EXPIRE")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(.secondary)
+            Picker("Default expiration", selection: expirationSelection) {
+                ForEach(ExpirationPreset.allCases) { preset in
+                    Text(preset.title).tag(preset)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 130)
+        }
+    }
+
+    private var importMenu: some View {
+        Menu {
+            Button("Import files…", systemImage: "doc.badge.plus") {
+                showingFilesPicker = true
+            }
+            Button("Track folders…", systemImage: "folder.badge.plus") {
+                showingFoldersPicker = true
+            }
+        } label: {
+            Label("Add items", systemImage: "plus")
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 3)
+                .frame(minHeight: 35)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
     private var overview: some View {
