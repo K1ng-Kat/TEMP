@@ -1,9 +1,0 @@
-# Xcode build output and per-user state
-.DS_Store
-build/
-DerivedData/
-*.xcuserstate
-xcuserdata/
-.swiftpm/
-*.ipa
-*.dSYM

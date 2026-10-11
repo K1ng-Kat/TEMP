@@ -190,7 +190,11 @@
                 CODE_SIGN_STYLE = Automatic;
                 CURRENT_PROJECT_VERSION = 1;
                 ENABLE_HARDENED_RUNTIME = YES;
+                ENABLE_DEBUG_DYLIB = NO;
+                EXECUTABLE_NAME = TEMP;
                 GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_KEY_CFBundleExecutable = TEMP;
+                MACH_O_TYPE = mh_execute;
                 INFOPLIST_KEY_CFBundleDisplayName = TEMP;
                 INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
                 LD_RUNPATH_SEARCH_PATHS = (
@@ -213,7 +217,11 @@
                 CODE_SIGN_STYLE = Automatic;
                 CURRENT_PROJECT_VERSION = 1;
                 ENABLE_HARDENED_RUNTIME = YES;
+                ENABLE_DEBUG_DYLIB = NO;
+                EXECUTABLE_NAME = TEMP;
                 GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_KEY_CFBundleExecutable = TEMP;
+                MACH_O_TYPE = mh_execute;
                 INFOPLIST_KEY_CFBundleDisplayName = TEMP;
                 INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
                 LD_RUNPATH_SEARCH_PATHS = (
