@@ -34,4 +34,10 @@ jobs:
             exit 1
           }
           /usr/bin/file "$BIN" | grep 'Mach-O'
-          echo "✅ TEMP.app contains a launchable native executable."
+
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")
+          test -n "$VERSION" && test -n "$BUILD"
+          echo "✅ TEMP v$VERSION (build $BUILD) compiled and contains a launchable native executable."
+          echo "## TEMP v$VERSION · Build $BUILD" >> "$GITHUB_STEP_SUMMARY"
+          echo "Native macOS executable verified for commit \`$GITHUB_SHA\`." >> "$GITHUB_STEP_SUMMARY"
