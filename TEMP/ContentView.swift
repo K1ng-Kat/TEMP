@@ -652,6 +652,12 @@ struct ContentView: View {
                     }
                 }
                 Divider()
+                if item.isInPlaceFolder {
+                    Button("Stop tracking (keep folder)") {
+                        store.stopTracking(item)
+                    }
+                    Divider()
+                }
                 Button("Move to Trash", role: .destructive) {
                     pendingTrash = item
                 }
@@ -677,6 +683,9 @@ struct ContentView: View {
             Button("Show in Finder") { store.showInFinder(item) }
             Divider()
             Button(item.isPinned ? "Unpin" : "Keep forever") { store.togglePin(for: item.id) }
+            if item.isInPlaceFolder {
+                Button("Stop tracking (keep folder)") { store.stopTracking(item) }
+            }
             Button("Move to Trash", role: .destructive) { pendingTrash = item }
         }
     }
