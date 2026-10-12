@@ -523,7 +523,7 @@ struct ContentView: View {
                 VStack(spacing: 12) {
                     settingsAction(
                         title: "Reveal TEMP storage",
-                        detail: "Open the folder containing TEMP-managed file copies.",
+                        detail: "Open storage for items imported by older TEMP versions.",
                         icon: "folder"
                     ) {
                         store.showLibraryInFinder()
@@ -533,13 +533,13 @@ struct ContentView: View {
 
                     settingsAction(
                         title: "Run cleanup now",
-                        detail: "Move expired items to Trash. Tracked original folders are included.",
+                        detail: "Move expired original files and folders to Trash.",
                         icon: "trash"
                     ) {
                         store.cleanupExpired()
                     }
 
-                    Text("Individual files are copied. Folders are tracked in place and their originals go to Trash when they expire.")
+                    Text("New files and folders are tracked at their original locations. At expiration, the originals move to macOS Trash. Older managed copies remain separate.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -590,7 +590,7 @@ struct ContentView: View {
                     NSWorkspace.shared.open(url)
                 }
 
-                Text("A successful GitHub build does not automatically update the app installed on this Mac.")
+                Text("A GitHub build does not automatically replace the app running on your Mac.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -624,11 +624,8 @@ struct ContentView: View {
         }
         .padding(19)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(Color.primary.opacity(0.075), lineWidth: 0.75)
-        }
+        .background(Color(nsColor: .controlBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func settingsAction(
@@ -974,54 +971,54 @@ private enum TEMPWelcomeStep: Int, CaseIterable {
 
     var icon: String {
         switch self {
-        case .introduction: "hourglass"
-        case .files: "doc.on.doc"
+        case .introduction: "clock"
+        case .files: "doc"
         case .folders: "folder"
-        case .control: "slider.horizontal.3"
+        case .control: "checkmark.shield"
         }
     }
 
     var eyebrow: String {
         switch self {
-        case .introduction: "MEET TEMP"
-        case .files: "TEMPORARY FILES"
-        case .folders: "FOLDERS STAY PUT"
-        case .control: "YOU'RE IN CONTROL"
+        case .introduction: "1 · OVERVIEW"
+        case .files: "2 · FILES"
+        case .folders: "3 · FOLDERS"
+        case .control: "4 · MANAGE"
         }
     }
 
     var headline: String {
         switch self {
-        case .introduction: "Your files. On your terms."
-        case .files: "Keep the original."
-        case .folders: "No duplicate folders."
-        case .control: "Set it. Change it. Keep it."
+        case .introduction: "Delete items later."
+        case .files: "Your original files."
+        case .folders: "Your original folders."
+        case .control: "Change your mind."
         }
     }
 
     var explanation: String {
         switch self {
         case .introduction:
-            "TEMP is a simple place for the files and folders you only need for a little while. Give an item a lifetime, and TEMP handles cleanup."
+            "Choose a file or folder and set when it should be deleted. TEMP keeps track of the original item and moves it to Trash after its timer expires."
         case .files:
-            "Import a file and TEMP makes a managed copy. Use that copy for temporary work. When it expires, only TEMP's copy goes to Trash."
+            "TEMP doesn't make a copy of a file. The file stays in Finder exactly where it is until TEMP moves that original to Trash."
         case .folders:
-            "Choose a folder and TEMP tracks it exactly where it lives. Nothing is duplicated. When it expires, the original folder and everything inside it go to Trash."
+            "Folders stay at their existing locations too. When the timer expires, the whole original folder, including everything inside it, goes to Trash."
         case .control:
-            "Change an expiration any time, pin an item to keep it, or stop tracking a folder without deleting it. Cleanup runs while TEMP is open and resumes at the next launch."
+            "Pin an item, change its timer, or stop tracking it without deleting it. Cleanup runs while TEMP is open and resumes on its next launch."
         }
     }
 
     var detail: String {
         switch self {
         case .introduction:
-            "Less clutter, without another folder to organize."
-        case .files:
-            "Your original file stays untouched."
-        case .folders:
-            "TEMP asks before tracking any original folder."
-        case .control:
             "Expired items go to macOS Trash, not permanent deletion."
+        case .files:
+            "TEMP requests permission to access the original file."
+        case .folders:
+            "You confirm before tracking any original folder."
+        case .control:
+            "Older imports made before this update remain legacy copies."
         }
     }
 }
@@ -1146,22 +1143,8 @@ private struct TEMPWelcomeExperience: View {
         }
         .padding(29)
         .frame(width: 730, height: 480)
-        .background {
-            ZStack {
-                Color(nsColor: .windowBackgroundColor)
-                LinearGradient(
-                    colors: [
-                        Color.accentColor.opacity(0.12),
-                        Color.purple.opacity(0.065),
-                        Color.clear,
-                        Color.cyan.opacity(0.035)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(Color(nsColor: .windowBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .onAppear {
             withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.55)) {
                 revealed = true
@@ -1206,29 +1189,13 @@ private struct TEMPWelcomeExperience: View {
 
     private func illustration(for current: TEMPWelcomeStep) -> some View {
         ZStack {
-            Circle()
-                .fill(Color.accentColor.opacity(0.085))
-                .frame(width: 216, height: 216)
-
-            Circle()
-                .strokeBorder(Color.accentColor.opacity(0.15), lineWidth: 1)
-                .frame(width: 178, height: 178)
-
-            RoundedRectangle(cornerRadius: 29, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .frame(width: 142, height: 142)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 29, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.09), lineWidth: 1)
-                }
-                .rotationEffect(.degrees(current == .control ? 7 : -6))
-
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .frame(width: 154, height: 154)
             Image(systemName: current.icon)
-                .font(.system(size: 66, weight: .ultraLight))
+                .font(.system(size: 59, weight: .ultraLight))
                 .foregroundStyle(Color.accentColor)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolRenderingMode(.hierarchical)
-                .shadow(color: Color.accentColor.opacity(0.13), radius: 12)
         }
         .accessibilityHidden(true)
     }
