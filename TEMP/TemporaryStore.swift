@@ -2,8 +2,8 @@ import AppKit
 import Combine
 import Foundation
 
-/// Copies files into TEMP. New folders are tracked in place after clear consent.
-/// Expiration moves managed copies or explicitly tracked original folders to Trash.
+/// Tracks approved original files and folders using security-scoped bookmarks.
+/// Legacy managed copies remain separate and cannot delete their originals.
 @MainActor
 final class TemporaryStore: ObservableObject {
     @Published private(set) var items: [TempItem] = []
@@ -73,65 +73,85 @@ final class TemporaryStore: ObservableObject {
         }
     }
 
+    // New items stay at their original locations; no duplicate gets created.
     func importURLs(_ urls: [URL], expiresAfter duration: TimeInterval?) {
         var imported = false
         var failures: [String] = []
 
         for source in urls where source.isFileURL {
-            let hasAccess = source.startAccessingSecurityScopedResource()
-            defer {
-                if hasAccess { source.stopAccessingSecurityScopedResource() }
-            }
+            let access = source.startAccessingSecurityScopedResource()
+            defer { if access { source.stopAccessingSecurityScopedResource() } }
 
-            let id = UUID()
-            let name = source.lastPathComponent
-            let isFolder = (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-
-            if isFolder {
-                do {
-                    // A security-scoped bookmark is required to access the same
-                    // user-approved original folder after relaunching TEMP.
-                    let bookmark = try source.bookmarkData(
-                        options: [.withSecurityScope],
-                        includingResourceValuesForKeys: nil,
-                        relativeTo: nil
-                    )
-                    items.append(TempItem(
-                        id: id, name: name, isFolder: true,
-                        importedAt: Date(),
-                        expiresAt: duration.map { Date().addingTimeInterval($0) },
-                        isPinned: duration == nil,
-                        folderBookmark: bookmark,
-                        sourcePath: source.path
-                    ))
-                    imported = true
-                } catch {
-                    failures.append("\(name): Can't retain access to this folder (\(error.localizedDescription)). Nothing was moved.")
-                }
-                continue
-            }
-
-            let container = managedURL.appendingPathComponent(id.uuidString, isDirectory: true)
-            let destination = container.appendingPathComponent(name)
             do {
-                try fileManager.createDirectory(at: container, withIntermediateDirectories: true)
-                try fileManager.copyItem(at: source, to: destination)
+                let original = source.standardizedFileURL
+                try validateTrackableOriginal(original)
+                let path = original.path
+
+                // Avoid parent/child overlaps; a tracked folder includes all its contents.
+                if items.contains(where: { record in
+                    guard record.isInPlaceItem, let existing = record.sourcePath else { return false }
+                    return existing == path ||
+                           path.hasPrefix(existing + "/") ||
+                           existing.hasPrefix(path + "/")
+                }) {
+                    throw TEMPStorageError.alreadyTracked
+                }
+
+                let isFolder = (try original.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true
+                let bookmark = try source.bookmarkData(
+                    options: [.withSecurityScope],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
                 items.append(TempItem(
-                    id: id, name: name, isFolder: false,
+                    id: UUID(),
+                    name: source.lastPathComponent,
+                    isFolder: isFolder,
                     importedAt: Date(),
                     expiresAt: duration.map { Date().addingTimeInterval($0) },
-                    isPinned: duration == nil
+                    isPinned: duration == nil,
+                    folderBookmark: bookmark,
+                    sourcePath: path
                 ))
                 imported = true
             } catch {
-                try? fileManager.removeItem(at: container)
-                failures.append("\(name): \(error.localizedDescription)")
+                failures.append("\(source.lastPathComponent): \(error.localizedDescription)")
             }
         }
 
         if imported { save() }
         if !failures.isEmpty {
-            errorMessage = "Couldn't import:\n" + failures.joined(separator: "\n")
+            errorMessage = "Couldn't track these originals:\n" + failures.joined(separator: "\n")
+        }
+    }
+
+    private func validateTrackableOriginal(_ url: URL) throws {
+        let path = url.standardizedFileURL.path
+        let home = fileManager.homeDirectoryForCurrentUser.standardizedFileURL.path
+        let support = managedURL.deletingLastPathComponent().standardizedFileURL.path
+
+        // TEMP must never be able to schedule your whole home folder, a system
+        // directory, its own database, or an immediate personal root folder.
+        let protected: Set<String> = [
+            "/", "/System", "/Library", "/Applications", "/Users", "/Volumes",
+            home, home + "/Desktop", home + "/Documents", home + "/Downloads",
+            home + "/Pictures", home + "/Music", home + "/Movies",
+            home + "/Library", support, managedURL.standardizedFileURL.path
+        ]
+        guard !protected.contains(path),
+              !path.hasPrefix(support + "/"),
+              !path.hasPrefix(home + "/Library/") else {
+            throw TEMPStorageError.protectedLocation
+        }
+        let values = try url.resourceValues(
+            forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey]
+        )
+        guard values.isSymbolicLink != true,
+              values.isDirectory == true || values.isRegularFile == true else {
+            throw TEMPStorageError.unsupportedItem
+        }
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw TEMPStorageError.missingItem
         }
     }
 
@@ -159,7 +179,7 @@ final class TemporaryStore: ObservableObject {
         do {
             try withItemURL(item) { url in
                 guard fileManager.fileExists(atPath: url.path) else {
-                    throw TEMPStorageError.missingFolder
+                    throw TEMPStorageError.missingItem
                 }
                 NSWorkspace.shared.open(url)
             }
@@ -172,7 +192,7 @@ final class TemporaryStore: ObservableObject {
         do {
             try withItemURL(item) { url in
                 guard fileManager.fileExists(atPath: url.path) else {
-                    throw TEMPStorageError.missingFolder
+                    throw TEMPStorageError.missingItem
                 }
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             }
@@ -185,9 +205,9 @@ final class TemporaryStore: ObservableObject {
         NSWorkspace.shared.open(managedURL)
     }
 
-    /// Remove an in-place folder without moving it to Trash.
+    /// Stop tracking an original without moving it to Trash.
     func stopTracking(_ item: TempItem) {
-        guard item.isInPlaceFolder else { return }
+        guard item.isInPlaceItem else { return }
         items.removeAll { $0.id == item.id }
         save()
     }
@@ -234,23 +254,32 @@ final class TemporaryStore: ObservableObject {
 
     private enum TEMPStorageError: LocalizedError {
         case lostPermission
-        case missingFolder
+        case missingItem
         case missingBookmark
+        case protectedLocation
+        case unsupportedItem
+        case alreadyTracked
 
         var errorDescription: String? {
             switch self {
             case .lostPermission:
-                return "TEMP no longer has permission to access that original folder. Re-import it to grant permission."
-            case .missingFolder:
-                return "The item is no longer at its saved location."
+                return "TEMP lost permission to this original item. Remove it and add it again."
+            case .missingItem:
+                return "The original item is no longer available."
             case .missingBookmark:
-                return "The folder's saved permission is missing."
+                return "TEMP no longer has a bookmark for this original item."
+            case .protectedLocation:
+                return "This is a protected system or personal root folder. Choose an individual item inside it."
+            case .unsupportedItem:
+                return "Only ordinary files and folders can be scheduled. Shortcuts and symbolic links aren't supported."
+            case .alreadyTracked:
+                return "This item, its parent folder, or its contents are already tracked."
             }
         }
     }
 
     private func withItemURL<T>(_ item: TempItem, _ action: (URL) throws -> T) throws -> T {
-        guard item.isInPlaceFolder else {
+        guard item.isInPlaceItem else {
             return try action(itemURL(for: item))
         }
         guard let bookmark = item.folderBookmark else { throw TEMPStorageError.missingBookmark }
@@ -266,16 +295,17 @@ final class TemporaryStore: ObservableObject {
         }
         defer { url.stopAccessingSecurityScopedResource() }
         guard !stale else { throw TEMPStorageError.lostPermission }
+        try validateTrackableOriginal(url.standardizedFileURL)
         return try action(url)
     }
 
     private func trashItem(_ item: TempItem) throws {
-        if item.isInPlaceFolder {
+        if item.isInPlaceItem {
             try withItemURL(item) { url in
                 guard fileManager.fileExists(atPath: url.path) else {
-                    throw TEMPStorageError.missingFolder
+                    throw TEMPStorageError.missingItem
                 }
-                // This is the actual user-selected original folder, not a copy.
+                // This is the actual user-selected original file or folder.
                 try fileManager.trashItem(at: url, resultingItemURL: nil)
             }
         } else {
