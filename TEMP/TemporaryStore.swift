@@ -251,6 +251,13 @@ final class TemporaryStore: ObservableObject {
         withLockedRecords {
 
         let now = Date()
+        // Send one warning when an item first enters its final 15 minutes.
+        for item in items where !item.isPinned {
+            if let deadline = item.expiresAt, deadline > now,
+               deadline.timeIntervalSince(now) <= 15 * 60 {
+                TEMPNotifications.upcoming(item)
+            }
+        }
         let expired = items.filter {
             !$0.isPinned && ($0.expiresAt.map { $0 <= now } ?? false)
         }
