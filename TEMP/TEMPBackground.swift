@@ -28,7 +28,7 @@ final class TEMPBackgroundController: ObservableObject {
             updateStatus()
             return
         }
-        if service.status == .enabled {
+        if service.status == .enabled || service.status == .requiresApproval {
             updateStatus()
             return
         }
@@ -53,6 +53,10 @@ final class TEMPBackgroundController: ObservableObject {
                 statusText = "Couldn't stop background cleanup: \(error.localizedDescription)"
             }
         }
+    }
+
+    func openLoginItems() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 
     func updateStatus() {
