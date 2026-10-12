@@ -699,69 +699,14 @@ struct ContentView: View {
 
     // MARK: - Library and lifetime
 
-    private func upcomingCard(_ item: TempItem) -> some View {
-        TimelineView(.periodic(from: .now, by: 30)) { timeline in
-            let until = max(0, (item.expiresAt ?? .distantFuture).timeIntervalSince(timeline.date))
-            let total = max(1, (item.expiresAt ?? timeline.date).timeIntervalSince(item.importedAt))
-            let progress = min(1, max(0, 1 - until / total))
-
-            HStack(spacing: 18) {
-                Image(systemName: "hourglass.bottomhalf.filled")
-                    .font(.system(size: 21))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 44, height: 44)
-                    .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 13))
-
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 10) {
-                        Text("NEXT TO GO")
-                            .font(.system(size: 9, weight: .bold))
-                            .tracking(1.2)
-                            .foregroundStyle(Color.accentColor)
-                        Text(item.name)
-                            .font(.system(size: 12, weight: .semibold))
-                            .lineLimit(1)
-                    }
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.accentColor.opacity(0.11))
-                            Capsule()
-                                .fill(LinearGradient(
-                                    colors: [Color.accentColor, Color.purple],
-                                    startPoint: .leading, endPoint: .trailing
-                                ))
-                                .frame(width: max(3, geometry.size.width * progress))
-                        }
-                    }
-                    .frame(height: 5)
-                    Text("TEMP will move this copy to Trash when its time is up.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Text(item.expiresAt ?? .now, style: .relative)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.accentColor)
-                    .frame(minWidth: 90, alignment: .trailing)
-            }
-            .padding(16)
-            .background(Color.accentColor.opacity(0.055), in: RoundedRectangle(cornerRadius: 15))
-            .overlay {
-                RoundedRectangle(cornerRadius: 15)
-                    .strokeBorder(Color.accentColor.opacity(0.12))
-            }
-        }
-    }
+    // The list itself shows which original item is next to expire.
 
     private var library: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(section.title)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text("\(visibleItems.count) \(visibleItems.count == 1 ? "item" : "items")")
+                        .font(.system(size: 13, weight: .medium))
                     Text(section.detail)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -796,7 +741,7 @@ struct ContentView: View {
             if visibleItems.isEmpty {
                 sectionEmptyState
             } else {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 0) {
                     ForEach(visibleItems) { item in
                         fileRow(item)
                     }
@@ -806,47 +751,26 @@ struct ContentView: View {
     }
 
     private var sectionEmptyState: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 9) {
             Image(systemName: searchText.isEmpty ? section.icon : "magnifyingglass")
-                .font(.system(size: 30, weight: .light))
-                .foregroundStyle(Color.accentColor.opacity(0.7))
-                .frame(width: 60, height: 60)
-                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
-            Text(searchText.isEmpty ? "Nothing here yet" : "No matching files")
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-            Text(searchText.isEmpty
-                 ? "Files will appear here as soon as they match this view."
-                 : "Try a different name or clear your search.")
-                .font(.system(size: 11))
+                .font(.system(size: 29, weight: .light))
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            Text(searchText.isEmpty ? "No items in this view" : "No results")
+                .font(.system(size: 14, weight: .medium))
             if !searchText.isEmpty {
                 Button("Clear search") { searchText = "" }
-                    .buttonStyle(.bordered)
-            } else {
-                Button("Import files") { showingFilesPicker = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.link)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
-        .background(TEMPStyle.panel.opacity(0.55), in: RoundedRectangle(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(TEMPStyle.hairline)
-        }
+        .frame(maxWidth: .infinity, minHeight: 210)
     }
 
     private func fileRow(_ item: TempItem) -> some View {
         HStack(spacing: 13) {
             Image(systemName: item.isFolder ? "folder.fill" : "doc.fill")
                 .font(.system(size: 18))
-                .foregroundStyle(item.isFolder ? .blue : Color.accentColor)
-                .frame(width: 43, height: 43)
-                .background(
-                    item.isFolder ? Color.blue.opacity(0.09) : Color.accentColor.opacity(0.085),
-                    in: RoundedRectangle(cornerRadius: 11)
-                )
+                .foregroundStyle(item.isFolder ? .blue : Color.secondary)
+.frame(width: 30, height: 35)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
                     .font(.system(size: 12, weight: .semibold))
@@ -860,7 +784,7 @@ struct ContentView: View {
             Spacer(minLength: 8)
 
             if item.isPinned {
-                Label("Kept forever", systemImage: "pin.fill")
+                Label("Pinned", systemImage: "pin.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.green)
                     .lineLimit(1)
@@ -868,7 +792,7 @@ struct ContentView: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(expiration, style: .relative)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(item.isExpiringSoon ? .orange : Color.accentColor)
+                        .foregroundStyle(item.isExpiringSoon ? .orange : .secondary)
                     Text(expiration.formatted(date: .abbreviated, time: .shortened))
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
@@ -923,12 +847,10 @@ struct ContentView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
         }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13)
-                .strokeBorder(TEMPStyle.hairline)
+                .padding(.horizontal, 7)
+        .padding(.vertical, 7)
+        .overlay(alignment: .bottom) {
+            Divider()
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { store.open(item) }
