@@ -97,6 +97,21 @@ final class TEMPBackgroundController: ObservableObject {
 enum TEMPNotifications {
     private static var pending: [Task<Void, Never>] = []
 
+    static func upcoming(_ item: TempItem) {
+        guard UserDefaults.standard.bool(forKey: "TEMP.notifications.enabled") else { return }
+        let key = "TEMP.notice.upcoming.\(item.id.uuidString)"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let action = item.effectiveExpiryAction == .permanentlyDelete
+            ? "permanently deleted"
+            : "moved to Trash"
+        enqueue(
+            title: "TEMP deletion in 15 minutes",
+            body: "\(item.name) will be \(action). Open TEMP to pin it or change its timer.",
+            id: "temp.upcoming.\(item.id.uuidString)"
+        )
+    }
+
     static func completed(_ item: TempItem) {
         let detail = item.effectiveExpiryAction == .permanentlyDelete ? "Permanently deleted" : "Moved to Trash"
         enqueue(
