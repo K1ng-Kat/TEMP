@@ -37,6 +37,21 @@ jobs:
           }
           echo "✅ Embedded headless background cleanup agent present."
 
+          /usr/bin/python3 - "$BIN" <<'PY'
+          import subprocess, sys
+          binary = sys.argv[1]
+          try:
+              run = subprocess.run(
+                  [binary, "--temp-background-cleanup"],
+                  capture_output=True, text=True, timeout=20
+              )
+          except subprocess.TimeoutExpired:
+              raise SystemExit("Headless TEMP agent failed to exit within 20 seconds")
+          if run.returncode != 0:
+              raise SystemExit(f"Headless TEMP agent failed: {run.returncode}: {run.stderr[-2000:]}")
+          print("✅ TEMP headless background entry point completed without a UI.")
+          PY
+
           ACTUAL_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")
           test "$ACTUAL_NAME" = "TEMP" || {
             echo "::error::CFBundleExecutable is '$ACTUAL_NAME', expected TEMP"
