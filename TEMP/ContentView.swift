@@ -30,9 +30,9 @@ struct ContentView: View {
     @State private var compactLayout = false
     @AppStorage("TEMP.welcome.completed") private var hasCompletedWelcome = false
     @State private var showingWelcome = false
-    @State private var pendingFolderURLs: [URL] = []
-    @State private var pendingFolderDuration: TimeInterval?
-    @State private var confirmingFolderImport = false
+    @State private var pendingOriginalURLs: [URL] = []
+    @State private var pendingOriginalDuration: TimeInterval?
+    @State private var confirmingOriginalImport = false
     @State private var sortMode: SortMode = .expiration
     @State private var showingFilesPicker = false
     @State private var showingFoldersPicker = false
@@ -168,21 +168,21 @@ struct ContentView: View {
             customExpirationSheet(for: item)
         }
         .confirmationDialog(
-            "Track original folders?",
-            isPresented: $confirmingFolderImport,
+            "Schedule original items for deletion?",
+            isPresented: $confirmingOriginalImport,
             titleVisibility: .visible
         ) {
-            Button("Track original folders") {
-                store.importURLs(pendingFolderURLs, expiresAfter: pendingFolderDuration)
-                pendingFolderURLs = []
-                confirmingFolderImport = false
+            Button("Track originals") {
+                store.importURLs(pendingOriginalURLs, expiresAfter: pendingOriginalDuration)
+                pendingOriginalURLs = []
+                confirmingOriginalImport = false
             }
             Button("Cancel", role: .cancel) {
-                pendingFolderURLs = []
-                confirmingFolderImport = false
+                pendingOriginalURLs = []
+                confirmingOriginalImport = false
             }
         } message: {
-            Text("TEMP does not copy folders. They stay at their original locations. When their timer expires, the ORIGINAL folders and their contents move to Trash. Choose Keep forever to disable automatic expiration.")
+            Text("TEMP makes no copies. When the timer ends, the ORIGINAL selected files or folders (including folder contents) are moved to macOS Trash. Pin or stop tracking them at any time.")
         }
         .confirmationDialog(
             "Move \(pendingTrash?.name ?? "this item") to Trash?",
@@ -199,7 +199,9 @@ struct ContentView: View {
         } message: {
             Text(pendingTrash?.isInPlaceFolder == true
                  ? "This will move the ORIGINAL folder and all of its contents to Trash."
-                 : "Only TEMP's managed copy is moved to Trash.")
+                 : (pendingTrash?.isInPlaceItem == true
+                    ? "This will move the ORIGINAL file to Trash."
+                    : "This legacy managed copy moves to Trash; the original is untouched."))
         }
         .alert(
             "TEMP couldn't complete that action",
@@ -301,7 +303,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
 
-                Text("Files are copied. Folders stay in place.")
+                Text("Originals are moved to Trash on expiration.")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -982,8 +984,8 @@ struct ContentView: View {
                     }
                 }
                 Divider()
-                if item.isInPlaceFolder {
-                    Button("Stop tracking (keep folder)") {
+                if item.isInPlaceItem {
+                    Button("Stop tracking (keep original)") {
                         store.stopTracking(item)
                     }
                     Divider()
@@ -1013,8 +1015,8 @@ struct ContentView: View {
             Button("Show in Finder") { store.showInFinder(item) }
             Divider()
             Button(item.isPinned ? "Unpin" : "Keep forever") { store.togglePin(for: item.id) }
-            if item.isInPlaceFolder {
-                Button("Stop tracking (keep folder)") { store.stopTracking(item) }
+            if item.isInPlaceItem {
+                Button("Stop tracking (keep original)") { store.stopTracking(item) }
             }
             Button("Move to Trash", role: .destructive) { pendingTrash = item }
         }
@@ -1024,7 +1026,7 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 9) {
             Image(systemName: "checkmark.shield")
                 .foregroundStyle(.green)
-            Text("Files expire from TEMP storage. Tracked folders expire at their original location.")
+            Text("Tracked original files and folders move to Trash on expiration.")
             Spacer(minLength: 10)
             Button("Clean up now") { store.cleanupExpired() }
                 .buttonStyle(.link)
@@ -1041,7 +1043,7 @@ struct ContentView: View {
                 .foregroundStyle(Color.accentColor)
             Text("Choose a lifetime")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
-            Text(item.isInPlaceFolder ? "TEMP will move the original folder to Trash." : "TEMP will move its managed copy to Trash.")
+            Text(item.isInPlaceItem ? "TEMP will move the original file or folder to Trash." : "TEMP will move this legacy managed copy to Trash.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1067,16 +1069,11 @@ struct ContentView: View {
     // MARK: - Import handling
 
     private func importRequestedURLs(_ urls: [URL], expiresAfter duration: TimeInterval?) {
-        let folders = urls.filter {
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-        }
-        let files = urls.filter { !folders.contains($0) }
-        if !files.isEmpty { store.importURLs(files, expiresAfter: duration) }
-        if !folders.isEmpty {
-            pendingFolderURLs.append(contentsOf: folders)
-            pendingFolderDuration = duration
-            confirmingFolderImport = true
-        }
+        let originals = urls.filter { $0.isFileURL }
+        guard !originals.isEmpty else { return }
+        pendingOriginalURLs.append(contentsOf: originals)
+        pendingOriginalDuration = duration
+        confirmingOriginalImport = true
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
