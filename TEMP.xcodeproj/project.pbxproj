@@ -12,6 +12,8 @@
         A00000000000000000000013 /* TemporaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* TemporaryStore.swift */; };
         A00000000000000000000014 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* ContentView.swift */; };
         A00000000000000000000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* Assets.xcassets */; };
+        A00000000000000000000020 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001E /* main.swift */; };
+        A00000000000000000000021 /* TEMPBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001F /* TEMPBackground.swift */; }
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +25,8 @@
         A0000000000000000000000B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
         A0000000000000000000000C /* TEMP.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TEMP.entitlements; sourceTree = "<group>"; };
         A0000000000000000000000D /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+        A0000000000000000000001E /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+        A0000000000000000000001F /* TEMPBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TEMPBackground.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +61,8 @@
             isa = PBXGroup;
             children = (
                 A00000000000000000000008 /* TEMPApp.swift */,
+                A0000000000000000000001E /* main.swift */,
+                A0000000000000000000001F /* TEMPBackground.swift */,
                 A0000000000000000000000B /* ContentView.swift */,
                 A00000000000000000000009 /* TempItem.swift */,
                 A0000000000000000000000A /* TemporaryStore.swift */,
@@ -76,6 +82,7 @@
                 A0000000000000000000000E /* Sources */,
                 A00000000000000000000010 /* Frameworks */,
                 A0000000000000000000000F /* Resources */,
+                A00000000000000000000022 /* Embed Cleanup Agent Plist */,
             );
             buildRules = (
             );
@@ -139,10 +146,32 @@
                 A00000000000000000000012 /* TempItem.swift in Sources */,
                 A00000000000000000000013 /* TemporaryStore.swift in Sources */,
                 A00000000000000000000014 /* ContentView.swift in Sources */,
+                A00000000000000000000020 /* main.swift in Sources */,
+                A00000000000000000000021 /* TEMPBackground.swift in Sources */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+        A00000000000000000000022 /* Embed Cleanup Agent Plist */ = {
+            isa = PBXShellScriptBuildPhase;
+            alwaysOutOfDate = 1;
+            buildActionMask = 2147483647;
+            files = (
+            );
+            inputPaths = (
+                "$(SRCROOT)/TEMP/com.k1ngkat.temp.cleanup.plist",
+            );
+            name = "Embed Cleanup Agent Plist";
+            outputPaths = (
+                "$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/com.k1ngkat.temp.cleanup.plist",
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/sh;
+            shellScript = "set -eu\nDEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\nmkdir -p \"$DEST\"\ncp \"${SRCROOT}/TEMP/com.k1ngkat.temp.cleanup.plist\" \"$DEST/com.k1ngkat.temp.cleanup.plist\"\n";
+        };
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
         A00000000000000000000018 /* Debug */ = {
@@ -188,7 +217,7 @@
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_ENTITLEMENTS = TEMP/TEMP.entitlements;
                 CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 4;
+                CURRENT_PROJECT_VERSION = 5;
                 ENABLE_HARDENED_RUNTIME = YES;
                 ENABLE_DEBUG_DYLIB = NO;
                 EXECUTABLE_NAME = TEMP;
@@ -201,7 +230,7 @@
                     "$(inherited)",
                     "@executable_path/../Frameworks",
                 );
-                MARKETING_VERSION = 0.5.0;
+                MARKETING_VERSION = 0.6.0;
                 PRODUCT_BUNDLE_IDENTIFIER = com.k1ngkat.temp;
                 PRODUCT_NAME = "$(TARGET_NAME)";
                 SWIFT_EMIT_LOC_STRINGS = YES;
@@ -215,7 +244,7 @@
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_ENTITLEMENTS = TEMP/TEMP.entitlements;
                 CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 4;
+                CURRENT_PROJECT_VERSION = 5;
                 ENABLE_HARDENED_RUNTIME = YES;
                 ENABLE_DEBUG_DYLIB = NO;
                 EXECUTABLE_NAME = TEMP;
@@ -228,7 +257,7 @@
                     "$(inherited)",
                     "@executable_path/../Frameworks",
                 );
-                MARKETING_VERSION = 0.5.0;
+                MARKETING_VERSION = 0.6.0;
                 PRODUCT_BUNDLE_IDENTIFIER = com.k1ngkat.temp;
                 PRODUCT_NAME = "$(TARGET_NAME)";
                 SWIFT_EMIT_LOC_STRINGS = YES;
