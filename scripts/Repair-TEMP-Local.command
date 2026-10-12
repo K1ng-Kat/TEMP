@@ -36,7 +36,9 @@ git clone --quiet --branch main --single-branch https://github.com/K1ng-Kat/TEMP
 grep -q compactSidebarOpen "$stage/project/TEMP/ContentView.swift" || { echo "Fresh redesign marker missing; original project untouched."; exit 1; }
 grep -q 'Stop tracking (keep folder)' "$stage/project/TEMP/ContentView.swift" || { echo "Folder controls missing; original project untouched."; exit 1; }
 grep -q 'private var settingsPage' "$stage/project/TEMP/ContentView.swift" || { echo "Settings not included; refusing stale source."; exit 1; }
-grep -q 'MARKETING_VERSION = 0.3.0;' "$stage/project/TEMP.xcodeproj/project.pbxproj" || { echo "Expected TEMP v0.3.0 release is missing; source unchanged."; exit 1; }
+expected_version="$(awk -F ' = |;' '/MARKETING_VERSION = / { print $2; exit }' "$stage/project/TEMP.xcodeproj/project.pbxproj")"
+expected_build="$(awk -F ' = |;' '/CURRENT_PROJECT_VERSION = / { print $2; exit }' "$stage/project/TEMP.xcodeproj/project.pbxproj")"
+[[ -n "$expected_version" && -n "$expected_build" ]] || { echo "Release version/build missing; original project untouched."; exit 1; }
 [[ -d "$stage/project/TEMP.xcodeproj" ]] || { echo "Project missing from GitHub clone."; exit 1; }
 if [[ -e "$R" ]]; then
   saved="$HOME/Documents/TEMP-Verified-Preserved-$(date +%Y%m%d-%H%M%S)-$$"
@@ -72,7 +74,7 @@ if [[ -d "$xcode/Contents/Developer" ]]; then
       actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist" 2>/dev/null || echo Unknown)"
       actual_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || echo Unknown)"
       echo "✅ Compiled TEMP version $actual_version (build $actual_build) from $(git -C "$R" rev-parse --short HEAD)"
-      if [[ "$actual_version" != "0.3.0" || "$actual_build" != "2" ]]; then
+      if [[ "$actual_version" != "$expected_version" || "$actual_build" != "$expected_build" ]]; then
         echo "❌ Xcode built the wrong version. See $B/build.log"
         exit 1
       fi
