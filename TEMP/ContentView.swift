@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var showingFoldersPicker = false
     @State private var isDropTargeted = false
     @State private var pendingTrash: TempItem?
+    @State private var pendingPermanentUnpin: TempItem?
     @State private var editingExpiration: TempItem?
     @State private var customDate = Date().addingTimeInterval(24 * 60 * 60)
 
@@ -232,6 +233,26 @@ struct ContentView: View {
                  : (pendingTrash?.isInPlaceItem == true
                     ? "This will move the ORIGINAL file to Trash."
                     : "This legacy managed copy moves to Trash; the original is untouched."))
+        }
+        .confirmationDialog(
+            "Resume permanent deletion for \(pendingPermanentUnpin?.name ?? "this item")?",
+            isPresented: Binding(
+                get: { pendingPermanentUnpin != nil },
+                set: { if !$0 { pendingPermanentUnpin = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Unpin and schedule permanent deletion", role: .destructive) {
+                if let item = pendingPermanentUnpin {
+                    store.togglePin(for: item.id)
+                }
+                pendingPermanentUnpin = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingPermanentUnpin = nil
+            }
+        } message: {
+            Text("Unpinning this item starts a 24-hour expiration timer. When it ends, TEMP will permanently delete the original without sending it to Trash.")
         }
         .alert(
             "TEMP couldn't complete that action",
@@ -837,6 +858,14 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, minHeight: 210)
     }
 
+    private func togglePinSafely(for item: TempItem) {
+        if item.isPinned && item.effectiveExpiryAction == .permanentlyDelete {
+            pendingPermanentUnpin = item
+        } else {
+            store.togglePin(for: item.id)
+        }
+    }
+
     private func fileRow(_ item: TempItem) -> some View {
         HStack(spacing: 13) {
             Image(systemName: item.isFolder ? "folder.fill" : "doc.fill")
@@ -852,8 +881,8 @@ struct ContentView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if item.permanentlyDeletesAtExpiry {
-                    Label("Permanently deletes at expiration", systemImage: "exclamationmark.triangle")
+                if item.effectiveExpiryAction == .permanentlyDelete {
+                    Label(item.isPinned ? "Permanent deletion if unpinned" : "Permanently deletes at expiration", systemImage: "exclamationmark.triangle")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.red)
                         .lineLimit(1)
@@ -879,7 +908,7 @@ struct ContentView: View {
             }
 
             Button {
-                store.togglePin(for: item.id)
+                togglePinSafely(for: item)
             } label: {
                 Image(systemName: item.isPinned ? "pin.slash" : "pin")
                     .font(.system(size: 12))
@@ -936,7 +965,7 @@ struct ContentView: View {
             Button("Open") { store.open(item) }
             Button("Show in Finder") { store.showInFinder(item) }
             Divider()
-            Button(item.isPinned ? "Unpin" : "Keep forever") { store.togglePin(for: item.id) }
+            Button(item.isPinned ? "Unpin" : "Keep forever") { togglePinSafely(for: item) }
             if item.isInPlaceItem {
                 Button("Stop tracking (keep original)") { store.stopTracking(item) }
             }
