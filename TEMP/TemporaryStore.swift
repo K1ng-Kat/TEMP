@@ -74,7 +74,11 @@ final class TemporaryStore: ObservableObject {
     }
 
     // New items stay at their original locations; no duplicate gets created.
-    func importURLs(_ urls: [URL], expiresAfter duration: TimeInterval?) {
+    func importURLs(
+        _ urls: [URL],
+        expiresAfter duration: TimeInterval?,
+        expiryAction: ExpiryAction = .moveToTrash
+    ) {
         var imported = false
         var failures: [String] = []
 
@@ -111,7 +115,8 @@ final class TemporaryStore: ObservableObject {
                     expiresAt: duration.map { Date().addingTimeInterval($0) },
                     isPinned: duration == nil,
                     folderBookmark: bookmark,
-                    sourcePath: path
+                    sourcePath: path,
+                    expiryAction: expiryAction
                 ))
                 imported = true
             } catch {
@@ -232,10 +237,15 @@ final class TemporaryStore: ObservableObject {
         var removed = Set<UUID>()
         for item in expired {
             do {
-                try trashItem(item)
+                switch item.effectiveExpiryAction {
+                case .moveToTrash:
+                    try trashItem(item)
+                case .permanentlyDelete:
+                    try permanentlyDeleteItem(item)
+                }
                 removed.insert(item.id)
             } catch {
-                errorMessage = "Couldn't clean up \(item.name): \(error.localizedDescription)"
+                errorMessage = "Couldn't \(item.effectiveExpiryAction == .permanentlyDelete ? "permanently delete" : "move to Trash") \(item.name): \(error.localizedDescription)"
             }
         }
         if !removed.isEmpty {
@@ -316,6 +326,27 @@ final class TemporaryStore: ObservableObject {
             }
             if fileManager.fileExists(atPath: container.path) {
                 try fileManager.removeItem(at: container)
+            }
+        }
+    }
+
+    /// Never bypasses the same security-scoped URL and protected-path checks
+    /// used by recoverable Trash. A deletion failure keeps the record for retry.
+    private func permanentlyDeleteItem(_ item: TempItem) throws {
+        try withItemURL(item) { url in
+            guard fileManager.fileExists(atPath: url.path) else {
+                throw TEMPStorageError.missingItem
+            }
+
+            // No system Trash: recursively removes the original item or the
+            // old managed copy itself. This operation cannot be undone.
+            try fileManager.removeItem(at: url)
+
+            if item.isLegacyCopy {
+                let container = url.deletingLastPathComponent()
+                if fileManager.fileExists(atPath: container.path) {
+                    try fileManager.removeItem(at: container)
+                }
             }
         }
     }
