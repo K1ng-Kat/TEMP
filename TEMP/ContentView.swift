@@ -80,20 +80,8 @@ struct ContentView: View {
             let sidebarWidth: CGFloat = compact ? 0 : (sidebarVisible ? 216 : 0)
 
             ZStack(alignment: .topLeading) {
-                ZStack {
-                    Color(nsColor: .windowBackgroundColor)
-                    LinearGradient(
-                        colors: [
-                            Color.accentColor.opacity(0.15),
-                            Color.purple.opacity(0.07),
-                            .clear,
-                            Color.cyan.opacity(0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
-                .ignoresSafeArea()
+                Color(nsColor: .windowBackgroundColor)
+                    .ignoresSafeArea()
 
                 HStack(spacing: 0) {
                     if !compact && sidebarVisible {
@@ -227,8 +215,8 @@ struct ContentView: View {
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("TEMP")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                    Text("Temporary workspace")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("Timed deletion")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
@@ -313,8 +301,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
-            Rectangle()
-                .fill(.regularMaterial)
+            Color(nsColor: .underPageBackgroundColor)
                 .ignoresSafeArea(edges: .top)
         }
         .overlay(alignment: .trailing) {
@@ -346,8 +333,8 @@ struct ContentView: View {
             .foregroundStyle(active ? Color.primary : Color.secondary)
             .padding(.horizontal, 11)
             .frame(height: 38)
-            .background(active ? Color.accentColor.opacity(0.13) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 10))
+            .background(active ? Color.accentColor.opacity(0.09) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 7))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -357,28 +344,20 @@ struct ContentView: View {
 
     private func workspace(compact: Bool) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 18) {
                 topBar(compact: compact)
-
                 if showingSettings {
                     settingsPage
+                } else if store.items.isEmpty && section == .all {
+                    welcomeDropZone
                 } else {
-                    overview
-                    if store.items.isEmpty && section == .all {
-                        welcomeDropZone
-                        gettingStarted
-                    } else {
-                        if section == .all, let next = nextExpiration {
-                            upcomingCard(next)
-                        }
-                        library
-                    }
+                    library
                     bottomNote
                 }
             }
             .frame(maxWidth: 1160, alignment: .leading)
             .padding(.horizontal, compact ? 18 : 24)
-            .padding(.top, 14)
+            .padding(.top, 18)
             .padding(.bottom, 23)
             .frame(maxWidth: .infinity, alignment: .top)
         }
@@ -435,7 +414,7 @@ struct ContentView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(showingSettings ? "Settings" : section.title)
-                        .font(.system(size: compact ? 25 : 31, weight: .bold, design: .rounded))
+                        .font(.system(size: compact ? 24 : 27, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                     Text(showingSettings ? "Preferences, storage, and app information" : section.detail)
@@ -684,95 +663,38 @@ struct ContentView: View {
         .buttonStyle(.plain)
     }
 
-    private var overview: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 12)], spacing: 12) {
-            metric(title: "In TEMP", count: store.items.count, detail: "Tracked items", symbol: "square.stack.3d.up")
-            metric(title: "Expiring soon", count: store.expiringCount, detail: "Within 24 hours", symbol: "clock")
-            metric(title: "Pinned", count: store.pinnedCount, detail: "Kept indefinitely", symbol: "pin")
-        }
-    }
-
-    private func metric(title: String, count: Int, detail: String, symbol: String) -> some View {
-        HStack(alignment: .top, spacing: 13) {
-            Image(systemName: symbol)
-                .font(.system(size: 18, weight: .medium))
-                .frame(width: 33, height: 33)
-                .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 11))
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.caption).foregroundStyle(.secondary)
-                Text(count.formatted()).font(.title3.weight(.semibold)).monospacedDigit()
-                Text(detail).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(15)
-        .frame(maxWidth: .infinity, minHeight: 91, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(Color.primary.opacity(0.075), lineWidth: 0.75)
-        }
-    }
+    // Keep the main view focused on files instead of oversized counters.
 
     // MARK: - Empty-state onboarding
 
     private var welcomeDropZone: some View {
-        HStack(alignment: .center, spacing: 20) {
-            VStack(alignment: .leading, spacing: 13) {
-                Text("YOUR WORKSPACE")
-                    .font(.caption2.weight(.semibold))
-                    .tracking(1.1)
-                    .foregroundStyle(.secondary)
-                Text("Keep it temporary.")
-                    .font(.system(size: 25, weight: .bold, design: .rounded))
-                Text("Add files or folders to get started. TEMP handles the expiration.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 9) {
-                    Button {
-                        showingFilesPicker = true
-                    } label: { Label("Add files", systemImage: "plus") }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .keyboardShortcut("o", modifiers: .command)
-                    Button {
-                        showingFoldersPicker = true
-                    } label: { Label("Track folder", systemImage: "folder") }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        .keyboardShortcut("o", modifiers: [.command, .shift])
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: isDropTargeted ? "arrow.down.doc" : "folder.badge.clock")
-                .font(.system(size: 65, weight: .ultraLight))
-                .foregroundStyle(Color.secondary.opacity(0.5))
-                .frame(width: 100, height: 110)
-                .accessibilityHidden(true)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, minHeight: 230, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24)
-                .strokeBorder(
-                    Color.primary.opacity(isDropTargeted ? 0.3 : 0.08),
-                    style: StrokeStyle(lineWidth: 1, dash: isDropTargeted ? [7, 5] : [])
-                )
-        }
-    }
-
-    private var gettingStarted: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "info.circle").foregroundStyle(.secondary)
-            Text("Files are copied to TEMP storage. Tracked folders stay in place and go to Trash on expiration.")
-                .font(.caption)
+        VStack(spacing: 15) {
+            Image(systemName: "clock.badge.checkmark")
+                .font(.system(size: 42, weight: .ultraLight))
                 .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
+                .padding(.bottom, 7)
+            Text("No scheduled items")
+                .font(.system(size: 20, weight: .semibold))
+            Text("Choose a file or folder, set an expiration, and TEMP will move the original to Trash when time runs out.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 390)
+            HStack(spacing: 10) {
+                Button("Add Files") { showingFilesPicker = true }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("o", modifiers: .command)
+                Button("Add Folder") { showingFoldersPicker = true }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
+            }
+            Text("No copies. The originals move to macOS Trash.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 8)
         }
-        .padding(15)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .frame(maxWidth: .infinity, minHeight: 360)
+        .padding(.horizontal, 24)
     }
 
     // MARK: - Library and lifetime
