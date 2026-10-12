@@ -7,14 +7,15 @@ struct TempItem: Identifiable, Codable, Hashable {
     let importedAt: Date
     var expiresAt: Date?
     var isPinned: Bool
-    // New folders are tracked where they already live. Legacy folders without
-    // a bookmark continue to use their existing copied TEMP-managed location.
+    // Newly imported files and folders use this security-scoped bookmark to
+    // access the original item after the app relaunches. Older items that lack
+    // a bookmark remain managed copies and are never treated as originals.
     var folderBookmark: Data? = nil
     var sourcePath: String? = nil
 
-    var isInPlaceFolder: Bool {
-        isFolder && folderBookmark != nil
-    }
+    var isInPlaceItem: Bool { folderBookmark != nil }
+    var isInPlaceFolder: Bool { isFolder && isInPlaceItem }
+    var isLegacyCopy: Bool { !isInPlaceItem }
 
     var isExpiringSoon: Bool {
         guard !isPinned, let expiresAt else { return false }
@@ -22,7 +23,7 @@ struct TempItem: Identifiable, Codable, Hashable {
     }
 
     var subtitle: String {
-        isInPlaceFolder ? "Folder · original location" : (isFolder ? "Folder · managed copy" : "File · managed copy")
+        isLegacyCopy ? (isFolder ? "Folder · legacy copy" : "File · legacy copy") : (isFolder ? "Folder · original" : "File · original")
     }
 }
 
