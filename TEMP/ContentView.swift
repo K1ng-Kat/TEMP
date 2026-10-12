@@ -19,6 +19,7 @@ private enum SortMode: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject private var store: TemporaryStore
+    @StateObject private var background = TEMPBackgroundController.shared
 
     @AppStorage("TEMP.defaultExpiration") private var defaultExpirationRaw = ExpirationPreset.oneDay.rawValue
     @AppStorage("TEMP.newItemExpiryAction") private var expiryActionRaw = ExpiryAction.moveToTrash.rawValue
@@ -330,31 +331,13 @@ struct ContentView: View {
             Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 13) {
                 Divider()
-                Button {
-                    showingWelcome = true
-                } label: {
-                    Label("How TEMP works", systemImage: "questionmark.circle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityHint("Opens the TEMP welcome guide")
 
-                Button {
-                    store.showLibraryInFinder()
-                } label: {
-                    Label("Legacy storage", systemImage: "folder")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
                 Text("Version \(appVersion) · Build \(appBuild)")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
 
-                Text("Originals are moved to Trash on expiration.")
+                Text("Timers run in the background when enabled.")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -418,8 +401,8 @@ struct ContentView: View {
                     bottomNote
                 }
             }
-            .frame(maxWidth: 1160, alignment: .leading)
-            .padding(.horizontal, compact ? 18 : 24)
+            .frame(maxWidth: 980, alignment: .leading)
+            .padding(.horizontal, compact ? 18 : 22)
             .padding(.top, 18)
             .padding(.bottom, 23)
             .frame(maxWidth: .infinity, alignment: .top)
@@ -457,7 +440,7 @@ struct ContentView: View {
             }
             .frame(minWidth: 114, minHeight: 35)
             .padding(.horizontal, 9)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 11))
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
             .overlay {
                 RoundedRectangle(cornerRadius: 11)
                     .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.75)
@@ -579,6 +562,59 @@ struct ContentView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(width: 150)
+                }
+            }
+
+            settingsCard(title: "Background & notifications", subtitle: "Works without an open TEMP window", icon: "clock") {
+                VStack(alignment: .leading, spacing: 13) {
+                    Toggle(isOn: Binding(
+                        get: { background.isEnabled },
+                        set: { background.setEnabled($0) }
+                    )) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Background cleanup")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Check expired items every minute while you're logged in, even after quitting TEMP.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+
+                    HStack(alignment: .center, spacing: 9) {
+                        Image(systemName: background.isEnabled ? "circle.fill" : "circle")
+                            .font(.system(size: 8))
+                            .foregroundStyle(background.isEnabled ? Color.green : Color.secondary)
+                        Text(background.statusText)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if background.isEnabled {
+                            Button("Retry") { background.registerIfNeeded() }
+                                .controlSize(.small)
+                        }
+                    }
+
+                    Divider()
+
+                    Toggle(isOn: Binding(
+                        get: { background.notificationsEnabled },
+                        set: { background.setNotificationsEnabled($0) }
+                    )) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Notifications")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Get notified when an item is deleted or cleanup fails.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+
+                    Text("Mac must be awake and you must be logged in. Pending cleanup resumes after sleep or restart.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -977,7 +1013,7 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 9) {
             Image(systemName: "checkmark.shield")
                 .foregroundStyle(.green)
-            Text("Expired items use their saved deletion method. Permanent deletion cannot be undone.")
+            Text("Cleanup runs in the background when enabled. Permanent deletion cannot be undone.")
             Spacer(minLength: 10)
             Button("Clean up now") { store.cleanupExpired() }
                 .buttonStyle(.link)
