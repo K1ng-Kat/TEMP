@@ -160,7 +160,7 @@ struct ContentView: View {
             isPresented: $confirmingOriginalImport,
             titleVisibility: .visible
         ) {
-            Button("Track originals") {
+            Button("Schedule deletion", role: .destructive) {
                 store.importURLs(pendingOriginalURLs, expiresAfter: pendingOriginalDuration)
                 pendingOriginalURLs = []
                 confirmingOriginalImport = false
@@ -170,7 +170,7 @@ struct ContentView: View {
                 confirmingOriginalImport = false
             }
         } message: {
-            Text("TEMP makes no copies. When the timer ends, the ORIGINAL selected files or folders (including folder contents) are moved to macOS Trash. Pin or stop tracking them at any time.")
+            Text("TEMP makes no copies. Unless pinned, the ORIGINAL selected items are moved to macOS Trash when their timers expire. Folders include everything inside. You can stop tracking without deleting.")
         }
         .confirmationDialog(
             "Move \(pendingTrash?.name ?? "this item") to Trash?",
@@ -279,7 +279,7 @@ struct ContentView: View {
                 Button {
                     store.showLibraryInFinder()
                 } label: {
-                    Label("Reveal TEMP storage", systemImage: "folder")
+                    Label("Legacy storage", systemImage: "folder")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                 }
@@ -522,8 +522,8 @@ struct ContentView: View {
             settingsCard(title: "Storage & cleanup", subtitle: "TEMP keeps you in control", icon: "externaldrive") {
                 VStack(spacing: 12) {
                     settingsAction(
-                        title: "Reveal TEMP storage",
-                        detail: "Open storage for items imported by older TEMP versions.",
+                        title: "Open legacy storage",
+                        detail: "Show copies created by previous versions of TEMP.",
                         icon: "folder"
                     ) {
                         store.showLibraryInFinder()
