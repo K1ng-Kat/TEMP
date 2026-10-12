@@ -27,6 +27,15 @@ jobs:
 
           test -f "$PLIST" || { echo "::error::TEMP Info.plist is missing"; exit 1; }
           test -x "$BIN" || { echo "::error::TEMP executable is missing"; exit 1; }
+          AGENT="$APP/Contents/Library/LaunchAgents/com.k1ngkat.temp.cleanup.plist"
+          test -f "$AGENT" || { echo "::error::Embedded background agent plist is missing"; exit 1; }
+          /usr/bin/plutil -lint "$AGENT"
+          AGENT_PROGRAM=$(/usr/libexec/PlistBuddy -c 'Print :BundleProgram' "$AGENT")
+          test "$AGENT_PROGRAM" = "Contents/MacOS/TEMP" || {
+            echo "::error::The background agent does not point to TEMP's signed executable"
+            exit 1
+          }
+          echo "✅ Embedded headless background cleanup agent present."
 
           ACTUAL_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")
           test "$ACTUAL_NAME" = "TEMP" || {
