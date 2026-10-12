@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-@main
 struct TEMPApp: App {
     @StateObject private var store = TemporaryStore()
 
@@ -9,9 +8,12 @@ struct TEMPApp: App {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(store)
-                .frame(minWidth: 870, minHeight: 640)
+                .frame(minWidth: 780, minHeight: 570)
+                .onAppear {
+                    TEMPBackgroundController.shared.registerIfNeeded()
+                }
         }
-        .defaultSize(width: 1110, height: 755)
+        .defaultSize(width: 1010, height: 700)
 
         MenuBarExtra("TEMP", systemImage: "hourglass") {
             TEMPMenuBarContent()
@@ -25,8 +27,8 @@ private struct TEMPMenuBarContent: View {
     @EnvironmentObject private var store: TemporaryStore
 
     var body: some View {
-        Text("TEMP is running")
-        Text("\(store.items.count) items · \(store.expiringCount) expiring soon")
+        Text("TEMP")
+        Text("\(store.items.count) tracked · \(store.expiringCount) expiring soon")
             .foregroundStyle(.secondary)
         Divider()
         Button("Open TEMP") {
@@ -35,6 +37,6 @@ private struct TEMPMenuBarContent: View {
         }
         Button("Clean Up Now") { store.cleanupExpired() }
         Divider()
-        Button("Quit TEMP") { NSApp.terminate(nil) }
+        Button("Quit TEMP window app") { NSApp.terminate(nil) }
     }
 }
