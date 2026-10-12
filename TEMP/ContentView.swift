@@ -59,6 +59,19 @@ struct ContentView: View {
         )
     }
 
+    private var expiryActionSelection: Binding<ExpiryAction> {
+        Binding(
+            get: { selectedExpiryAction },
+            set: { selected in
+                if selected == .permanentlyDelete && selectedExpiryAction != .permanentlyDelete {
+                    showingEnablePermanentConfirmation = true
+                } else {
+                    expiryActionRaw = selected.rawValue
+                }
+            }
+        )
+    }
+
     private var visibleItems: [TempItem] {
         let matches = store.items(in: section).filter {
             searchText.isEmpty || $0.name.localizedCaseInsensitiveContains(searchText)
@@ -548,6 +561,39 @@ struct ContentView: View {
                 }
             }
 
+            settingsCard(
+                title: "When items expire",
+                subtitle: "Choose the default for new files and folders",
+                icon: "clock.arrow.circlepath"
+            ) {
+                VStack(alignment: .leading, spacing: 13) {
+                    Picker("Expiration action", selection: expiryActionSelection) {
+                        ForEach(ExpiryAction.allCases, id: \.self) { action in
+                            Text(action.title).tag(action)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 430)
+
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: selectedExpiryAction == .permanentlyDelete
+                            ? "exclamationmark.triangle.fill"
+                            : "info.circle")
+                        Text(selectedExpiryAction == .permanentlyDelete
+                             ? "Permanent deletion is ON. New items will be deleted irreversibly when they expire—without using Trash. The contents of folders are included."
+                             : "Move to Trash is the default. Items can be restored until Trash is emptied.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(selectedExpiryAction == .permanentlyDelete ? Color.red : Color.secondary)
+
+                    Text("Changing this setting affects newly added items only. Previously scheduled items keep the method chosen when they were added.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             settingsCard(title: "Storage & cleanup", subtitle: "TEMP keeps you in control", icon: "externaldrive") {
                 VStack(spacing: 12) {
                     settingsAction(
@@ -562,13 +608,13 @@ struct ContentView: View {
 
                     settingsAction(
                         title: "Run cleanup now",
-                        detail: "Move expired original files and folders to Trash.",
+                        detail: "Process expired items using each item’s saved deletion method.",
                         icon: "trash"
                     ) {
                         store.cleanupExpired()
                     }
 
-                    Text("New files and folders are tracked at their original locations. At expiration, the originals move to macOS Trash. Older managed copies remain separate.")
+                    Text("New files and folders are tracked at their original locations. At expiration, the originals are moved to Trash or permanently deleted, depending on each item's saved choice.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -806,6 +852,12 @@ struct ContentView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if item.permanentlyDeletesAtExpiry {
+                    Label("Permanently deletes at expiration", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
 
@@ -896,7 +948,7 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 9) {
             Image(systemName: "checkmark.shield")
                 .foregroundStyle(.green)
-            Text("Tracked original files and folders move to Trash on expiration.")
+            Text("Expired items use their saved deletion method. Permanent deletion cannot be undone.")
             Spacer(minLength: 10)
             Button("Clean up now") { store.cleanupExpired() }
                 .buttonStyle(.link)
@@ -1029,11 +1081,11 @@ private enum TEMPWelcomeStep: Int, CaseIterable {
     var explanation: String {
         switch self {
         case .introduction:
-            "Choose a file or folder and set when it should be deleted. TEMP keeps track of the original item and moves it to Trash after its timer expires."
+            "Choose a file or folder and set when it should be deleted. TEMP tracks the original item; by default it moves that original to Trash when the timer expires."
         case .files:
-            "TEMP doesn't make a copy of a file. The file stays in Finder exactly where it is until TEMP moves that original to Trash."
+            "TEMP doesn't make a copy of a file. It stays in Finder until its timer expires, when it is either moved to Trash or permanently deleted, depending on your settings."
         case .folders:
-            "Folders stay at their existing locations too. When the timer expires, the whole original folder, including everything inside it, goes to Trash."
+            "Folders stay at their existing locations too. When the timer expires, the original folder and everything inside it are removed using the chosen deletion method."
         case .control:
             "Pin an item, change its timer, or stop tracking it without deleting it. Cleanup runs while TEMP is open and resumes on its next launch."
         }
@@ -1042,7 +1094,7 @@ private enum TEMPWelcomeStep: Int, CaseIterable {
     var detail: String {
         switch self {
         case .introduction:
-            "Expired items go to macOS Trash, not permanent deletion."
+            "Items move to Trash by default. Permanent deletion is an optional setting."
         case .files:
             "TEMP requests permission to access the original file."
         case .folders:
