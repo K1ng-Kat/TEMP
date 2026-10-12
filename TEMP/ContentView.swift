@@ -21,6 +21,7 @@ struct ContentView: View {
     @EnvironmentObject private var store: TemporaryStore
 
     @AppStorage("TEMP.defaultExpiration") private var defaultExpirationRaw = ExpirationPreset.oneDay.rawValue
+    @AppStorage("TEMP.newItemExpiryAction") private var expiryActionRaw = ExpiryAction.moveToTrash.rawValue
 
     @State private var section: TempSection = .all
     @State private var showingSettings = false
@@ -33,6 +34,8 @@ struct ContentView: View {
     @State private var pendingOriginalURLs: [URL] = []
     @State private var pendingOriginalDuration: TimeInterval?
     @State private var confirmingOriginalImport = false
+    @State private var pendingOriginalExpiryAction: ExpiryAction = .moveToTrash
+    @State private var showingEnablePermanentConfirmation = false
     @State private var sortMode: SortMode = .expiration
     @State private var showingFilesPicker = false
     @State private var showingFoldersPicker = false
@@ -40,6 +43,10 @@ struct ContentView: View {
     @State private var pendingTrash: TempItem?
     @State private var editingExpiration: TempItem?
     @State private var customDate = Date().addingTimeInterval(24 * 60 * 60)
+
+    private var selectedExpiryAction: ExpiryAction {
+        ExpiryAction(rawValue: expiryActionRaw) ?? .moveToTrash
+    }
 
     private var chosenExpiration: ExpirationPreset {
         ExpirationPreset(rawValue: defaultExpirationRaw) ?? .oneDay
@@ -156,12 +163,20 @@ struct ContentView: View {
             customExpirationSheet(for: item)
         }
         .confirmationDialog(
-            "Schedule original items for deletion?",
+            pendingOriginalExpiryAction == .permanentlyDelete
+                ? "Permanently delete these originals when time runs out?"
+                : "Schedule original items for deletion?",
             isPresented: $confirmingOriginalImport,
             titleVisibility: .visible
         ) {
-            Button("Schedule deletion", role: .destructive) {
-                store.importURLs(pendingOriginalURLs, expiresAfter: pendingOriginalDuration)
+            Button(pendingOriginalExpiryAction == .permanentlyDelete
+                   ? "Schedule permanent deletion"
+                   : "Move to Trash when expired", role: .destructive) {
+                store.importURLs(
+                    pendingOriginalURLs,
+                    expiresAfter: pendingOriginalDuration,
+                    expiryAction: pendingOriginalExpiryAction
+                )
                 pendingOriginalURLs = []
                 confirmingOriginalImport = false
             }
@@ -170,7 +185,21 @@ struct ContentView: View {
                 confirmingOriginalImport = false
             }
         } message: {
-            Text("TEMP makes no copies. Unless pinned, the ORIGINAL selected items are moved to macOS Trash when their timers expire. Folders include everything inside. You can stop tracking without deleting.")
+            Text(pendingOriginalExpiryAction == .permanentlyDelete
+                 ? "WARNING: The original selected files or folders (including everything inside those folders) will be DELETED PERMANENTLY when they expire. Nothing goes to Trash. This cannot be undone. You may pin or stop tracking them beforehand."
+                 : "TEMP makes no copies. Unless pinned, the ORIGINAL selected items are moved to macOS Trash when their timers expire. Folders include everything inside. You can stop tracking without deleting.")
+        }
+        .confirmationDialog(
+            "Enable permanent deletion for new items?",
+            isPresented: $showingEnablePermanentConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Enable permanent deletion", role: .destructive) {
+                expiryActionRaw = ExpiryAction.permanentlyDelete.rawValue
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Newly scheduled original files and folders will be deleted permanently when they expire, without going to Trash. This cannot be undone. Items already scheduled keep their original deletion method.")
         }
         .confirmationDialog(
             "Move \(pendingTrash?.name ?? "this item") to Trash?",
@@ -914,6 +943,7 @@ struct ContentView: View {
         guard !originals.isEmpty else { return }
         pendingOriginalURLs.append(contentsOf: originals)
         pendingOriginalDuration = duration
+        pendingOriginalExpiryAction = selectedExpiryAction
         confirmingOriginalImport = true
     }
 
