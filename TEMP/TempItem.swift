@@ -1,5 +1,18 @@
 import Foundation
 
+/// What happens at expiration. The default is recoverable Trash.
+enum ExpiryAction: String, Codable, CaseIterable {
+    case moveToTrash
+    case permanentlyDelete
+
+    var title: String {
+        switch self {
+        case .moveToTrash: "Move to Trash"
+        case .permanentlyDelete: "Permanently delete"
+        }
+    }
+}
+
 struct TempItem: Identifiable, Codable, Hashable {
     let id: UUID
     let name: String
@@ -12,6 +25,15 @@ struct TempItem: Identifiable, Codable, Hashable {
     // a bookmark remain managed copies and are never treated as originals.
     var folderBookmark: Data? = nil
     var sourcePath: String? = nil
+    // Nil on existing records. Those always keep the original Trash behavior.
+    // Each new import captures the user's choice so later Settings changes
+    // cannot unexpectedly make already-tracked items irrecoverable.
+    var expiryAction: ExpiryAction? = nil
+
+    var effectiveExpiryAction: ExpiryAction { expiryAction ?? .moveToTrash }
+    var permanentlyDeletesAtExpiry: Bool {
+        !isPinned && effectiveExpiryAction == .permanentlyDelete
+    }
 
     var isInPlaceItem: Bool { folderBookmark != nil }
     var isInPlaceFolder: Bool { isFolder && isInPlaceItem }
