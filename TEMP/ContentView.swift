@@ -591,8 +591,13 @@ struct ContentView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                         if background.isEnabled {
-                            Button("Retry") { background.registerIfNeeded() }
+                            Button("Login Items…") { background.openLoginItems() }
                                 .controlSize(.small)
+                            Button("Retry") {
+                                background.registerIfNeeded()
+                                background.updateStatus()
+                            }
+                            .controlSize(.small)
                         }
                     }
 
