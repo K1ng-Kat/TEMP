@@ -34,7 +34,7 @@ trap '[[ ! -d "$stage" ]] || rm -rf "$stage"' EXIT
 echo "Cloning current TEMP main from GitHub..."
 git clone --quiet --branch main --single-branch https://github.com/K1ng-Kat/TEMP.git "$stage/project"
 grep -q compactSidebarOpen "$stage/project/TEMP/ContentView.swift" || { echo "Fresh redesign marker missing; original project untouched."; exit 1; }
-grep -q 'Stop tracking (keep folder)' "$stage/project/TEMP/ContentView.swift" || { echo "Folder controls missing; original project untouched."; exit 1; }
+grep -q 'Stop tracking (keep original)' "$stage/project/TEMP/ContentView.swift" || { echo "Original-item tracking controls missing; original project untouched."; exit 1; }
 grep -q 'private var settingsPage' "$stage/project/TEMP/ContentView.swift" || { echo "Settings not included; refusing stale source."; exit 1; }
 expected_version="$(awk -F ' = |;' '/MARKETING_VERSION = / { print $2; exit }' "$stage/project/TEMP.xcodeproj/project.pbxproj")"
 expected_build="$(awk -F ' = |;' '/CURRENT_PROJECT_VERSION = / { print $2; exit }' "$stage/project/TEMP.xcodeproj/project.pbxproj")"
