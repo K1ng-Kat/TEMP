@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Combine
 import Foundation
 
@@ -12,6 +13,7 @@ final class TemporaryStore: ObservableObject {
     private let fileManager = FileManager.default
     private let managedURL: URL
     private let indexURL: URL
+    private let indexLockURL: URL
     private var cleanupTimer: Timer?
 
     init() {
@@ -21,6 +23,7 @@ final class TemporaryStore: ObservableObject {
         )[0].appendingPathComponent("TEMP", isDirectory: true)
         managedURL = root.appendingPathComponent("ManagedItems", isDirectory: true)
         indexURL = root.appendingPathComponent("items.json")
+        indexLockURL = root.appendingPathComponent("items.lock")
 
         do {
             try fileManager.createDirectory(
@@ -38,8 +41,10 @@ final class TemporaryStore: ObservableObject {
         cleanupExpired()
         // A running app also cleans while its window is closed. Quit means
         // cleanup resumes the next time TEMP launches.
-        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.cleanupExpired() }
+        let timer = Timer(timeInterval: 10, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.cleanupExpired()
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         cleanupTimer = timer
@@ -79,6 +84,8 @@ final class TemporaryStore: ObservableObject {
         expiresAfter duration: TimeInterval?,
         expiryAction: ExpiryAction = .moveToTrash
     ) {
+        withLockedRecords {
+
         var imported = false
         var failures: [String] = []
 
@@ -128,6 +135,7 @@ final class TemporaryStore: ObservableObject {
         if !failures.isEmpty {
             errorMessage = "Couldn't track these originals:\n" + failures.joined(separator: "\n")
         }
+            }
     }
 
     private func validateTrackableOriginal(_ url: URL) throws {
@@ -161,14 +169,19 @@ final class TemporaryStore: ObservableObject {
     }
 
     func setExpiration(for id: UUID, to date: Date?) {
+        withLockedRecords {
+
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].expiresAt = date
         items[index].isPinned = date == nil
         save()
         cleanupExpired()
+            }
     }
 
     func togglePin(for id: UUID) {
+        withLockedRecords {
+
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         if items[index].isPinned {
             items[index].isPinned = false
@@ -178,6 +191,7 @@ final class TemporaryStore: ObservableObject {
             items[index].expiresAt = nil
         }
         save()
+            }
     }
 
     func open(_ item: TempItem) {
@@ -212,12 +226,17 @@ final class TemporaryStore: ObservableObject {
 
     /// Stop tracking an original without moving it to Trash.
     func stopTracking(_ item: TempItem) {
+        withLockedRecords {
+
         guard item.isInPlaceItem else { return }
         items.removeAll { $0.id == item.id }
         save()
+            }
     }
 
     func moveToTrash(_ item: TempItem) {
+        withLockedRecords {
+
         do {
             try trashItem(item)
             items.removeAll { $0.id == item.id }
@@ -225,9 +244,12 @@ final class TemporaryStore: ObservableObject {
         } catch {
             errorMessage = "Couldn't move \(item.name) to Trash: \(error.localizedDescription)"
         }
+            }
     }
 
     func cleanupExpired() {
+        withLockedRecords {
+
         let now = Date()
         let expired = items.filter {
             !$0.isPinned && ($0.expiresAt.map { $0 <= now } ?? false)
@@ -244,14 +266,17 @@ final class TemporaryStore: ObservableObject {
                     try permanentlyDeleteItem(item)
                 }
                 removed.insert(item.id)
+                TEMPNotifications.completed(item)
             } catch {
                 errorMessage = "Couldn't \(item.effectiveExpiryAction == .permanentlyDelete ? "permanently delete" : "move to Trash") \(item.name): \(error.localizedDescription)"
+                TEMPNotifications.failed(item, message: error.localizedDescription)
             }
         }
         if !removed.isEmpty {
             items.removeAll { removed.contains($0.id) }
             save()
         }
+            }
     }
 
     private func itemURL(for item: TempItem) -> URL {
@@ -349,6 +374,38 @@ final class TemporaryStore: ObservableObject {
                 }
             }
         }
+    }
+
+    // The visible app and the on-demand background process operate on the
+    // same items.json. Hold a cross-process advisory lock for the entire
+    // read / mutation / atomic save to prevent lost updates or stale deletions.
+    private func withLockedRecords(_ work: () -> Void) {
+        let fd = indexLockURL.path.withCString {
+            Darwin.open($0, O_RDWR | O_CREAT, mode_t(0o600))
+        }
+        guard fd >= 0 else {
+            errorMessage = "TEMP couldn't open its data lock. Nothing was changed."
+            return
+        }
+        defer { Darwin.close(fd) }
+        guard Darwin.flock(fd, LOCK_EX) == 0 else {
+            errorMessage = "TEMP couldn't lock its data. Nothing was changed."
+            return
+        }
+        defer { _ = Darwin.flock(fd, LOCK_UN) }
+
+        do {
+            if fileManager.fileExists(atPath: indexURL.path) {
+                let data = try Data(contentsOf: indexURL)
+                items = try JSONDecoder().decode([TempItem].self, from: data)
+            } else {
+                items = []
+            }
+        } catch {
+            errorMessage = "TEMP couldn't safely reload its data: \(error.localizedDescription)"
+            return
+        }
+        work()
     }
 
     private func save() {
