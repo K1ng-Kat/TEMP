@@ -1,7 +1,9 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 struct TEMPApp: App {
+    @NSApplicationDelegateAdaptor(TEMPAppDelegate.self) private var appDelegate
     @StateObject private var store = TemporaryStore()
 
     var body: some Scene {
@@ -38,5 +40,20 @@ private struct TEMPMenuBarContent: View {
         Button("Clean Up Now") { store.cleanupExpired() }
         Divider()
         Button("Quit TEMP window app") { NSApp.terminate(nil) }
+    }
+}
+
+
+private final class TEMPAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 }
