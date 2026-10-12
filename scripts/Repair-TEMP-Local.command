@@ -138,7 +138,7 @@ sync_once() {
   gitdir="$(git -C "$R" rev-parse --absolute-git-dir)" || return 1
   [[ ! -e "$gitdir/index.lock" && ! -f "$gitdir/MERGE_HEAD" && ! -d "$gitdir/rebase-merge" ]] || { state "WAITING: Git operation in progress"; return 1; }
   mkdir -p "$gitdir/info"
-  if ! grep -q '^# TEMP auto-sync privacy guard
+  if ! grep -Fq "TEMP auto-sync privacy guard" "$gitdir/info/exclude" 2>/dev/null; then
     cat >> "$gitdir/info/exclude" <<'EXCLUDE'
 
 # TEMP auto-sync privacy guard
