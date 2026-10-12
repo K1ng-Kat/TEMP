@@ -89,7 +89,7 @@ enum TempSection: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
-        case .all: "Everything in your temporary library"
+        case .all: "Original files and folders scheduled for deletion"
         case .expiringSoon: "Items expiring in the next 24 hours"
         case .pinned: "Items you chose to keep"
         }
