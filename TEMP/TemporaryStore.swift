@@ -388,11 +388,11 @@ final class TemporaryStore: ObservableObject {
             return
         }
         defer { Darwin.close(fd) }
-        guard Darwin.flock(fd, LOCK_EX) == 0 else {
+        guard Darwin.lockf(fd, F_LOCK, 0) == 0 else {
             errorMessage = "TEMP couldn't lock its data. Nothing was changed."
             return
         }
-        defer { _ = Darwin.flock(fd, LOCK_UN) }
+        defer { _ = Darwin.lockf(fd, F_ULOCK, 0) }
 
         do {
             if fileManager.fileExists(atPath: indexURL.path) {
